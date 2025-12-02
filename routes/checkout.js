@@ -236,13 +236,176 @@ router.post("/cod", async (req, res) => {
 
 /*
 |--------------------------------------------------------------------------
-| ❌ PAYMENT CANCEL
+| ✅ STRIPE PAYMENT CANCEL → MARK FAILED + RESTORE STOCK
+| POST /api/checkout/payment-cancel
 |--------------------------------------------------------------------------
 */
 router.post("/payment-cancel", async (req, res) => {
-  const { orderId } = req.body;
-  await Order.findOneAndDelete({ orderId });
-  res.json({ success: true });
+  try {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID required",
+      });
+    }
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // ✅ If already paid, do NOT touch stock
+    if (order.status === "paid") {
+      return res.json({
+        success: true,
+        message: "Order already paid",
+      });
+    }
+
+    // ✅ RESTORE STOCK
+    for (const item of order.items) {
+      const product = await Product.findById(item.product);
+      if (!product) continue;
+
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
+        const variant = product.variants.find(
+          (v) =>
+            v.size === item.size &&
+            (item.color ? v.color === item.color : true)
+        );
+
+        if (variant) {
+          variant.stock += item.qty;
+        }
+
+        product.stockQuantity = product.variants.reduce(
+          (sum, v) => sum + (v.stock || 0),
+          0
+        );
+      } else {
+        product.stockQuantity += item.qty;
+      }
+
+      await product.save();
+    }
+
+    // ✅ MARK AS FAILED (NOT CONFIRMED ❌)
+    order.status = "failed";
+    order.paymentMethod = "STRIPE";
+    order.paymentId = null;
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: "Payment failed & stock restored",
+    });
+  } catch (err) {
+    console.error("PAYMENT CANCEL ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Payment cancel failed",
+    });
+  }
 });
+
+/*
+|--------------------------------------------------------------------------
+| ✅ USER CANCEL AFTER PAYMENT → AUTO REFUND + RESTORE STOCK
+| POST /api/checkout/refund
+|--------------------------------------------------------------------------
+*/
+router.post("/refund", async (req, res) => {
+  try {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID required",
+      });
+    }
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // ✅ Only paid orders can be refunded
+    if (order.status !== "paid") {
+      return res.status(400).json({
+        success: false,
+        message: `Order cannot be refunded (status: ${order.status})`,
+      });
+    }
+
+    if (!order.paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "No payment ID found for this order",
+      });
+    }
+
+    // ✅ 1️⃣ CREATE STRIPE REFUND
+    const refund = await stripe.refunds.create({
+      payment_intent: order.paymentId,
+      reason: "requested_by_customer",
+    });
+
+    // ✅ 2️⃣ RESTORE STOCK
+    for (const item of order.items) {
+      const product = await Product.findById(item.product);
+      if (!product) continue;
+
+      if (Array.isArray(product.variants) && product.variants.length > 0) {
+        const variant = product.variants.find(
+          (v) =>
+            v.size === item.size &&
+            (item.color ? v.color === item.color : true)
+        );
+
+        if (variant) {
+          variant.stock += item.qty;
+        }
+
+        product.stockQuantity = product.variants.reduce(
+          (sum, v) => sum + (v.stock || 0),
+          0
+        );
+      } else {
+        product.stockQuantity += item.qty;
+      }
+
+      await product.save();
+    }
+
+    // ✅ 3️⃣ MARK ORDER AS REFUNDED
+    order.status = "refunded";
+    order.refundId = refund.id;
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: "Payment refunded successfully",
+      refund,
+    });
+  } catch (err) {
+    console.error("REFUND ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Refund failed",
+    });
+  }
+});
+
 
 module.exports = router;

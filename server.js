@@ -28,7 +28,7 @@ app.use("/uploads", express.static("uploads"));
 // ----------------------------
 // TRUST PROXY (NEEDED FOR IP)
 // ----------------------------
-app.set("trust proxy", 1);
+app.set("trust proxy", false);
  // <-- keep this
 
 
@@ -67,6 +67,7 @@ const allowedOrigins = [
    "http://kzarre.local:3000",
    "http://kzarre.local:3001",
    "https://kzarre-admin.vercel.app",
+   "https://0jvrs0g4-3000.inc1.devtunnels.ms/",
 
 ];
 
