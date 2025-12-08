@@ -43,6 +43,21 @@ const CustomerSchema = new mongoose.Schema(
     // ✅ ✅ FORGOT PASSWORD (NEW - SECURE)
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
+    
+    addresses: {
+  type: [String],
+  default: []
+},
+tags: {
+  type: [String],
+  default: []
+},
+metrics: {
+  ltv: { type: Number, default: 0 },
+  aov: { type: Number, default: 0 },
+  returnRate: { type: Number, default: 0 }
+},
+
   },
   { timestamps: true }
 );

@@ -1,21 +1,23 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const SuperAdmin = require("../models/SuperAdmin");
-const { sendAdminEmail  } = require("../utils/adminsmpt"); 
+const { sendAdminEmail } = require("../utils/adminsmpt");
 const { superAdminOTPTemplate } = require("../utils/emailTemplates");
 
 const router = express.Router();
 
 // ============================================================
-// DEV COOKIE (works for localhost + 192.168.x.x + kzarre.local)
+// ✅ DEV COOKIE (localhost + LAN + kzarre.local SAFE)
 // ============================================================
 const DEV_COOKIE = {
   httpOnly: true,
-  secure: false,
-  sameSite: "lax",
+  secure: true,      // ✅ REQUIRED with SameSite None
+  sameSite: "none",  // ✅ REQUIRED for cross-origin fetch
   path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
+
+
 
 // ============================================================
 const generateOTP = () =>
@@ -24,7 +26,7 @@ const generateOTP = () =>
 const pendingSuperAdmins = {};
 
 // ============================================================
-// 1️⃣ Register (Send OTP)
+// ✅ 1️⃣ SUPER ADMIN REGISTER (SEND OTP)
 // ============================================================
 router.post("/register", async (req, res) => {
   try {
@@ -50,13 +52,13 @@ router.post("/register", async (req, res) => {
 
     res.json({ success: true, message: "OTP sent", email });
   } catch (err) {
-    console.error(err);
+    console.error("SuperAdmin Register Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 // ============================================================
-// 2️⃣ Verify Register OTP
+// ✅ 2️⃣ VERIFY REGISTER OTP
 // ============================================================
 router.post("/verify-otp", async (req, res) => {
   try {
@@ -78,21 +80,15 @@ router.post("/verify-otp", async (req, res) => {
     await superAdmin.save();
     delete pendingSuperAdmins[email];
 
-    const token = jwt.sign(
-      { id: superAdmin._id, role: "superadmin" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.json({ success: true, message: "Registration complete", token });
+    res.json({ success: true, message: "Registration complete" });
   } catch (err) {
-    console.error(err);
+    console.error("Verify OTP Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 // ============================================================
-// 3️⃣ Login (Send OTP)
+// ✅ 3️⃣ LOGIN (SEND OTP)
 // ============================================================
 router.post("/login", async (req, res) => {
   try {
@@ -115,13 +111,13 @@ router.post("/login", async (req, res) => {
 
     res.json({ success: true, message: "OTP sent", email });
   } catch (err) {
-    console.error(err);
+    console.error("Login OTP Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 // ============================================================
-// 4️⃣ Verify Login OTP → Set Cookie + Tokens
+// ✅ 4️⃣ VERIFY LOGIN OTP → SET COOKIE + RETURN ACCESS TOKEN
 // ============================================================
 router.post("/login/verify", async (req, res) => {
   try {
@@ -150,7 +146,7 @@ router.post("/login/verify", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // Save session ⬇
+    // ✅ Save session
     const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
     const userAgent = req.headers["user-agent"];
 
@@ -163,98 +159,136 @@ router.post("/login/verify", async (req, res) => {
 
     await superAdmin.save();
 
-    // Set cookie (dev-safe)
+    // ✅ Set cookie
     res.cookie("refresh_token", refreshToken, DEV_COOKIE);
 
     res.json({
       success: true,
       message: "Login successful",
       accessToken,
-      superAdmin: {
+      refreshToken, // ✅ ADD THIS
+      admin: {
         id: superAdmin._id,
         name: superAdmin.name,
         email: superAdmin.email,
+        role: "superadmin",
       },
     });
   } catch (err) {
-    console.error(err);
+    console.error("Verify Login Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// ============================================================
-// 5️⃣ Refresh Access Token
-// ============================================================
 router.post("/refresh", async (req, res) => {
   try {
-    const token = req.cookies?.refresh_token;
+    const cookieToken = req.cookies?.refresh_token;
+    const headerToken =
+      req.headers.authorization &&
+      req.headers.authorization.split(" ")[1];
 
-    if (!token)
+    const token = cookieToken || headerToken;
+
+    console.log("\n🔁 REFRESH DEBUG START");
+    console.log("🍪 Cookie Token Exists:", !!cookieToken);
+    console.log("🪪 Header Token Exists:", !!headerToken);
+
+    if (!token) {
+      console.log("❌ NO REFRESH TOKEN RECEIVED");
       return res.status(401).json({ message: "No refresh token found" });
-
-    const payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
-
-    const superAdmin = await SuperAdmin.findById(payload.id);
-    if (!superAdmin)
-      return res.status(401).json({ message: "User not found" });
-
-    // ----------------------------------------------------------
-    // 🚀 FIXED: Disable IP checking in DEV environment
-    // ----------------------------------------------------------
-    if (process.env.NODE_ENV === "production") {
-      const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-
-      const savedIp = (superAdmin.currentSession?.ip || "").replace("::ffff:", "");
-      const currentIp = ip.replace("::ffff:", "");
-
-      if (savedIp !== currentIp)
-        return res.status(401).json({ message: "Session mismatch" });
     }
 
-// Create new access token
-const newAccessToken = jwt.sign(
-  { id: superAdmin._id, role: "superadmin" },
-  process.env.JWT_SECRET,
-  { expiresIn: "15m" }
-);
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+      console.log("✅ JWT VERIFIED → USER ID:", payload.id);
+    } catch (err) {
+      console.log("❌ JWT VERIFY FAILED:", err.message);
+      return res.status(401).json({ message: "Invalid refresh token" });
+    }
 
-// Create NEW refresh token
-const newRefreshToken = jwt.sign(
-  { id: superAdmin._id, role: "superadmin" },
-  process.env.REFRESH_TOKEN_SECRET,
-  { expiresIn: "7d" }
-);
+    const superAdmin = await SuperAdmin.findById(payload.id);
 
-// Update session
-superAdmin.currentSession.token = newRefreshToken;
-await superAdmin.save();
+    if (!superAdmin) {
+      console.log("❌ USER NOT FOUND IN DB");
+      return res.status(401).json({ message: "User not found" });
+    }
 
-// Set cookie again
-res.cookie("refresh_token", newRefreshToken, DEV_COOKIE);
+    if (superAdmin.currentSession?.token !== token) {
+      console.log("❌ SESSION TOKEN MISMATCH");
+      console.log("DB TOKEN EXISTS:", !!superAdmin.currentSession?.token);
+      return res.status(401).json({ message: "Invalid session" });
+    }
 
-// Send both tokens
-res.json({ accessToken: newAccessToken });
+    // ✅ IP CHECK ONLY IN PRODUCTION
+    if (process.env.NODE_ENV === "production") {
+      const currentIp =
+        req.headers["x-forwarded-for"]?.split(",")[0] ||
+        req.socket.remoteAddress;
+
+      const savedIp = superAdmin.currentSession?.ip;
+
+      console.log("🌍 SAVED IP:", savedIp);
+      console.log("🌍 CURRENT IP:", currentIp);
+
+      if (savedIp !== currentIp) {
+        console.log("❌ IP MISMATCH");
+        return res.status(401).json({ message: "Session mismatch" });
+      }
+    }
+
+    // ✅ ROTATE TOKENS
+    const newAccessToken = jwt.sign(
+      { id: superAdmin._id, role: "superadmin" },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    const newRefreshToken = jwt.sign(
+      { id: superAdmin._id, role: "superadmin" },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    superAdmin.currentSession.token = newRefreshToken;
+    await superAdmin.save();
+
+    res.cookie("refresh_token", newRefreshToken, DEV_COOKIE);
+
+    console.log("✅ REFRESH SUCCESS — NEW TOKENS ISSUED");
+    console.log("🔁 REFRESH DEBUG END\n");
+
+    res.json({ accessToken: newAccessToken });
   } catch (err) {
-    console.error(err);
+    console.log("🔥 REFRESH CRASH:", err.message);
     res.status(401).json({ message: "Invalid refresh token" });
   }
 });
 
+
+
 // ============================================================
-// 6️⃣ Logout
+// ✅ 6️⃣ LOGOUT (COOKIE + DB SESSION CLEAR)
 // ============================================================
 router.post("/logout", async (req, res) => {
   try {
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-    });
+    const token =
+      req.cookies?.refresh_token ||
+      (req.headers.authorization &&
+        req.headers.authorization.split(" ")[1]);
 
+
+    if (token) {
+      const payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+      await SuperAdmin.findByIdAndUpdate(payload.id, {
+        $unset: { currentSession: 1 },
+      });
+    }
+
+    res.clearCookie("refresh_token", DEV_COOKIE);
     res.json({ message: "Logged out" });
   } catch (err) {
-    res.clearCookie("refresh_token");
+    res.clearCookie("refresh_token", DEV_COOKIE);
     res.json({ message: "Logged out" });
   }
 });

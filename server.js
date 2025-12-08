@@ -16,19 +16,42 @@ const app = express();
 // ----------------------------
 connectDB();
 
+app.use(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" })
+);
+
+app.use("/api/stripe", require("./routes/stripeWebhook"));
+
 // ----------------------------
 // SECURITY + BASE MIDDLEWARE
 // ----------------------------
 app.use(helmet());
 app.use(express.json());
-app.use(cookieParser());   // <-- FIXED (must be early)
+app.use(cookieParser());
+// ============================
+// 🔍 AUTH + COOKIE DEBUG (DEV ONLY)
+// ============================
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV !== "production") {
+    console.log("\n🔍 AUTH DEBUG");
+    console.log("➡️ URL:", req.method, req.originalUrl);
+    console.log("🍪 Cookies:", req.cookies || "NONE");
+    console.log("🪪 Authorization:", req.headers.authorization || "NONE");
+    console.log("🌐 Origin:", req.headers.origin || "NONE");
+    console.log("📡 IP:", req.ip);
+    console.log("✅ END AUTH DEBUG\n");
+  }
+  next();
+});
+   // <-- FIXED (must be early)
 app.use(morgan("dev"));
 app.use("/uploads", express.static("uploads"));
 
 // ----------------------------
 // TRUST PROXY (NEEDED FOR IP)
 // ----------------------------
-app.set("trust proxy", false);
+app.set("trust proxy", 1);
  // <-- keep this
 
 
@@ -92,6 +115,7 @@ app.options(/.*/, cors());
 // ----------------------------
 
 
+
 const isLocal = process.env.NODE_ENV !== "production";
 
 const limiter = rateLimit({
@@ -108,10 +132,11 @@ app.use((req, res, next) => {
 });
 
 
+
 // ----------------------------
 // ROUTES
 // ----------------------------
-app.use("/api/checkout/webhook/stripe", express.raw({ type: "application/json" }));
+
 // app.use("/api/analytics",  require("./routes/analyticsRoutes"));
 app.use("/api/geoip", require("./routes/geoip"));
 app.use("/api/track", require("./routes/track"));
@@ -131,6 +156,13 @@ app.use("/api/otp-password", require("./routes/otpPassword"));
 app.use("/api/email-otp-password", require("./routes/emailOtpPassword"));
 app.use("/api/search", require("./routes/search"));
 app.use("/api/notify", require("./routes/notifyRoutes"))
+app.use("/api/admin/shipping", require("./routes/adminShipping"));
+app.use("/api/admin/returns", require("./routes/adminReturns"));
+app.use("/api/admin/audit", require("./routes/adminAudit"));
+app.use("/api/admin/campaign", require("./routes/adminCampaign"));
+app.use("/api/admin/seo", require("./routes/adminSEO"));
+app.use("/api/admin/ads", require("./routes/adminAds"));
+app.use("/api/crm", require("./routes/adminCRM"));
 
 
 

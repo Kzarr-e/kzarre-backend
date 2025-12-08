@@ -9,13 +9,11 @@ const orderSchema = new mongoose.Schema({
       qty: { type: Number, required: true },
       price: { type: Number, required: true },
 
-      // 🔥 Premium Shipping Label Fields (Frontend Dynamic Printing)
-      name: { type: String },     // Product Name
-      image: { type: String },    // Primary Image URL
-      sku: { type: String },      // 🔥 MAIN SKU
-      barcode: { type: String },  // Variant SKU or Item Barcode
+      name: { type: String },
+      image: { type: String },
+      sku: { type: String },
+      barcode: { type: String },
 
-      // Variant Details
       size: { type: String },
       color: { type: String }
     }
@@ -39,6 +37,7 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: [
+      "conform",
       "pending",
       "paid",
       "failed",
@@ -47,6 +46,34 @@ const orderSchema = new mongoose.Schema({
       "cancelled"
     ],
     default: "pending",
+  },
+
+  // ✅✅✅ REQUIRED FOR STRIPE STOCK SAFETY
+  stockReduced: { type: Boolean, default: false },
+
+  // ✅ SHIPMENT BLOCK
+  shipment: {
+    carrier: {
+      type: String,
+      enum: ["ups", "fedex", "dhl", "manual"],
+    },
+    trackingId: String,
+
+    status: {
+      type: String,
+      enum: [
+        "label_created",
+        "picked_up",
+        "in_transit",
+        "out_for_delivery",
+        "delivered",
+        "exception",
+      ],
+    },
+
+    labelUrl: String,
+    shippedAt: Date,
+    deliveredAt: Date,
   },
 
   createdAt: { type: Date, default: Date.now },

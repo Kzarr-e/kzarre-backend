@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Order = require("../models/Order");
+const Product = require("../models/product");
 
 // ================================
 // ADMIN AUTH
@@ -16,42 +17,42 @@ function adminAuth(req, res, next) {
 // ==================================================
 // 1. COD ORDER
 // ==================================================
-router.post("/cod", async (req, res) => {
-  try {
-    const { orderId, userId, email } = req.body;
+// router.post("/cod", async (req, res) => {
+//   try {
+//     const { orderId, userId, email } = req.body;
 
-    if (!orderId)
-      return res.status(400).json({ success: false, message: "Order ID missing" });
+//     if (!orderId)
+//       return res.status(400).json({ success: false, message: "Order ID missing" });
 
-    const order = await Order.findOne({ orderId });
-    if (!order)
-      return res.status(404).json({ success: false, message: "Order not found" });
+//     const order = await Order.findOne({ orderId });
+//     if (!order)
+//       return res.status(404).json({ success: false, message: "Order not found" });
 
-    if (userId && order.userId?.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized: Order does not belong to this user",
-      });
-    }
+//     if (userId && order.userId?.toString() !== userId.toString()) {
+//       return res.status(403).json({
+//         success: false,
+//         message: "Unauthorized: Order does not belong to this user",
+//       });
+//     }
 
-    order.paymentMethod = "COD";
-    order.status = "pending";
-    await order.save();
+//     order.paymentMethod = "COD";
+//     order.status = "pending";
+//     await order.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "COD Order Confirmed Successfully",
-      orderId: order.orderId,
-      order,
-    });
+//     return res.status(200).json({
+//       success: true,
+//       message: "COD Order Confirmed Successfully",
+//       orderId: order.orderId,
+//       order,
+//     });
 
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Server Error Processing COD",
-    });
-  }
-});
+//   } catch (error) {
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server Error Processing COD",
+//     });
+//   }
+// });
 
 // ==================================================
 // 2. USER ORDERS
@@ -113,69 +114,58 @@ router.patch("/:orderId/status", async (req, res) => {
 // 5. CANCEL ORDER
 // ==================================================
 // ==================================================
-// ✅ 5. CANCEL ORDER (USER)
-// URL: PUT /api/orders/cancel/:orderId
-// ==================================================
 router.put("/cancel/:orderId", async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const order = await Order.findOne({ orderId: req.params.orderId });
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
 
-    const order = await Order.findOne({ orderId });
+    if (order.status === "cancelled")
+      return res.status(400).json({ success: false, message: "Already cancelled" });
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+    if (order.status === "delivered")
+      return res.status(400).json({ success: false, message: "Delivered cannot cancel" });
+
+    // ✅ RESTORE STOCK (SAFE)
+    for (const item of order.items) {
+      const product = await Product.findById(item.product);
+      if (!product) continue;
+
+      if (product.variants?.length) {
+        const variant = product.variants.find(
+          v =>
+            v.size === item.size &&
+            (item.color ? v.color === item.color : true)
+        );
+        if (variant) variant.stock += item.qty;
+
+        product.stockQuantity = product.variants.reduce(
+          (sum, v) => sum + (v.stock || 0),
+          0
+        );
+      } else {
+        product.stockQuantity += item.qty;
+      }
+
+      await product.save();
     }
 
-    // ❌ Already cancelled
-    if (order.status === "cancelled") {
-      return res.status(400).json({
-        success: false,
-        message: "Order already cancelled",
-      });
-    }
-
-    // ❌ Delivered orders cannot be cancelled
-    if (order.status === "delivered") {
-      return res.status(400).json({
-        success: false,
-        message: "Delivered order cannot be cancelled",
-      });
-    }
-
-    // ✅ ALLOW cancel only if:
-    // pending | paid | failed | shipped
-    const cancellable = ["pending", "paid", "failed", "shipped"];
-
-    if (!cancellable.includes(order.status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Order cannot be cancelled in '${order.status}' state`,
-      });
-    }
-
-    // ✅ UPDATE STATUS
     order.status = "cancelled";
-    order.cancelledAt = new Date();
-
     await order.save();
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: "Order cancelled successfully",
+      message: "Order cancelled & stock restored",
       order,
     });
-  } catch (error) {
-    console.error("CANCEL ERROR:", error);
+  } catch (err) {
+    console.error("CANCEL ERROR:", err);
     return res.status(500).json({
       success: false,
-      message: "Server error while cancelling order",
+      message: "Cancel failed",
     });
   }
 });
-
 
 // ==================================================
 // ⭐ 6. GET SINGLE ORDER (MUST BE LAST)
