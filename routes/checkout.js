@@ -6,6 +6,8 @@ const Order = require("../models/Order");
 const Product = require("../models/product");
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const { sendNotification } = require("../utils/notify");
+
 
 function generateOrderId() {
   const num = Math.floor(100000 + Math.random() * 900000); // 6 digits
@@ -72,6 +74,13 @@ router.post("/cod", async (req, res) => {
      order.paymentMethod = "COD";
     order.status = "conform"; // ✅ NOT paid
     await order.save();
+// 🔔 ADMIN NOTIFICATION — COD ORDER CONFIRMED
+sendNotification({
+  type: "order-confirmed",
+  title: "COD Order Confirmed",
+  message: `COD Order #${order.orderId} confirmed`,
+  orderId: order._id,
+});
 
     res.json({ success: true, order });
   } catch (err) {
@@ -130,6 +139,7 @@ router.post("/create-order", async (req, res) => {
     const orderId = generateOrderId();
 
     const order = await Order.create({
+      
       userId: userId ? new mongoose.Types.ObjectId(userId) : null,
       items: [
         {
@@ -152,10 +162,11 @@ router.post("/create-order", async (req, res) => {
       status: "conform",
       createdAt: new Date(),
     });
+    // 🔔 ADMIN NOTIFICATION — NEW ORDER CREATED
         if (address?.email) {
   await sendEmail(
     address.email,
-    "✅ Order Created – KZARRÈ",
+    "Order Created – KZARRÈ",
     `
       <h2>Your order has been created ✅</h2>
       <p><b>Order ID:</b> ${order.orderId}</p>
@@ -291,6 +302,14 @@ router.post("/stripe/confirm", async (req, res) => {
     order.paymentId = paymentIntentId;
     order.paymentMethod = "STRIPE";
     await order.save();
+
+sendNotification({
+  type: "order-confirmed",
+  title: "New Order Confirmed",
+  message: `Order #${order.orderId} confirmed successfully`,
+  orderId: order._id,
+});
+
 
     res.json({ success: true, message: "Payment confirmed", order });
   } catch (err) {

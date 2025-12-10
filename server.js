@@ -16,6 +16,28 @@ const app = express();
 // ----------------------------
 connectDB();
 
+const http = require("http");
+const { Server } = require("socket.io");
+
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*", // ✅ replace with your frontend domain later
+    credentials: true,
+  },
+});
+
+global.io = io;
+
+io.on("connection", (socket) => {
+  console.log("Admin connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
+});
+
 app.use(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" })
@@ -184,7 +206,9 @@ app.use(errorHandler);
 // ----------------------------
 const PORT = process.env.PORT || 5500;
 const HOST = "0.0.0.0";
-app.listen(PORT, HOST, () => {
+server.listen(PORT, HOST, () => {
   console.log(`\n✅ Server running on port ${PORT}`);
+  console.log("🔔 Socket.IO enabled");
   console.log("🚀 Ready...\n");
 });
+

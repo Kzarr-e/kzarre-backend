@@ -21,6 +21,7 @@
     "multer-s3": "^3.0.1",
     "nodemailer": "^7.0.10",
     "react-simple-maps": "^3.0.0",
+    "socket.io": "^4.8.1",
     "stripe": "^20.0.0",
     "topojson-client": "^3.1.0",
     "ua-parser-js": "^2.0.6"
