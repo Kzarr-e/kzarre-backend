@@ -116,12 +116,12 @@ const allowedOrigins = [
    "http://kzarre.local:3000",
    "http://kzarre.local:3001",
    "https://kzarre-admin.vercel.app",
-   "https://0jvrs0g4-3000.inc1.devtunnels.ms/",
-   "http://13.60.212.51:5500/",
-   "http://13.60.212.51:3000/",
-   "http://13.60.212.51:3001/",
-   "http://13.60.212.51/",
-   "http://kzarre-aws.duckdns.org/",
+   "https://0jvrs0g4-3000.inc1.devtunnels.ms",
+   "http://13.60.212.51:5500",
+   "http://13.60.212.51:3000",
+   "http://13.60.212.51:3001",
+   "http://13.60.212.51",
+   "http://kzarre-aws.duckdns.org",
    "ss"
 ];
 
@@ -198,7 +198,7 @@ app.use("/cms", require("./routes/cmsFont"));
 
 // cheching piplines
 // check piple 2
-
+// checking zero down with deployment 
 
 app.get("/", (req, res) => {
   res.json({
