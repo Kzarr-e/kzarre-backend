@@ -11,6 +11,10 @@ const { errorHandler } = require("./middlewares/errorHandler");
 
 const app = express();
 
+const args = process.argv.slice(2);
+let cliPort = args.find(a => a.startsWith("--port="));
+if (cliPort) cliPort = cliPort.split("=")[1];
+
 // ----------------------------
 // DB CONNECT
 // ----------------------------
@@ -211,7 +215,8 @@ app.use(errorHandler);
 // ----------------------------
 // START SERVER
 // ----------------------------
-const PORT = process.env.PORT || 5500;
+const PORT = cliPort || process.env.PORT || 5500;
+
 const HOST = "0.0.0.0";
 server.listen(PORT, HOST, () => {
   console.log(`\n✅ Server running on port ${PORT}`);
