@@ -190,6 +190,7 @@ app.use("/api/admin/campaign", require("./routes/adminCampaign"));
 app.use("/api/admin/seo", require("./routes/adminSEO"));
 app.use("/api/admin/ads", require("./routes/adminAds"));
 app.use("/api/crm", require("./routes/adminCRM"));
+app.use("/cms", require("./routes/cmsFont"));
 
 
 

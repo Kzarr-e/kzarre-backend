@@ -11,10 +11,10 @@ const CMSContentSchema = new mongoose.Schema(
         "",
         "post",
         "home-landing-video",
-         "men-page-video",
-    "women-page-video",
-    "accessories-video",
-    "heritage-video",
+        "men-page-video",
+        "women-page-video",
+        "accessories-video",
+        "heritage-video",
         "home-banner",
         "about-page",
         "product-page",
@@ -30,6 +30,20 @@ const CMSContentSchema = new mongoose.Schema(
       default: "",
     },
 
+    // ⭐ NEW — Banner Styling Data from CMS Admin
+   bannerStyle: {
+  titleColor: { type: String, default: "" },
+  titleSize: { type: String, default: "" },
+  titleFont: { type: String, default: "" },
+
+  descColor: { type: String, default: "" },
+  descSize: { type: String, default: "" },
+  descFont: { type: String, default: "" },
+
+  alignment: { type: String, default: "left" }
+},
+
+
     media: {
       url: String,
       name: String,
@@ -40,7 +54,7 @@ const CMSContentSchema = new mongoose.Schema(
     meta: {
       tag: String,
       description: String,
-      keywords: String, // SINGLE STRING ONLY
+      keywords: String,
       visibleDate: String,
       visibleTime: String,
     },
@@ -63,7 +77,7 @@ const CMSContentSchema = new mongoose.Schema(
         description: String,
         metaTag: String,
         metaDescription: String,
-        keywords: String,  // SINGLE STRING ONLY
+        keywords: String,
         order: Number,
       },
     ],

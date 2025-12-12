@@ -5,6 +5,7 @@ const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const crypto = require("crypto");
 const CMSContent = require("../models/CMSContent");
 require("dotenv").config();
+const CMSFont = require("../models/CMSFont");
 
 // =============================
 // 🔹 AWS S3 Setup
@@ -73,6 +74,7 @@ const uploadToS3 = async (file, displayTo) => {
 // =============================
 // ✅ Save CMS Content (Create Post)
 // =============================
+
 router.post("/save", upload.any(), async (req, res) => {
   try {
     const {
@@ -116,6 +118,16 @@ router.post("/save", upload.any(), async (req, res) => {
     let heroVideoUrl = null;
     let media = null;
     let mediaGroup = [];
+
+    // NEW: Banner Styling
+let parsedBannerStyle = {};
+if (req.body.bannerStyle) {
+  try {
+    parsedBannerStyle = JSON.parse(req.body.bannerStyle);
+  } catch (err) {
+    console.log("❌ Invalid bannerStyle JSON:", err);
+  }
+}
 
     // ============================================
     // 1️⃣ Home Landing Video
@@ -177,6 +189,7 @@ router.post("/save", upload.any(), async (req, res) => {
           metaDescription: "",
           keywords: "",
           order: i + 1,
+          style: parsedBannerStyle
         }))
       );
     }
@@ -213,6 +226,7 @@ router.post("/save", upload.any(), async (req, res) => {
             ? arrKeywords[i].join(",")
             : arrKeywords[i] || "",
           order: i + 1,
+              style: parsedBannerStyle
         }))
       );
     }
@@ -237,23 +251,33 @@ router.post("/save", upload.any(), async (req, res) => {
     // ============================================
     // 6️⃣ Save to MongoDB
     // ============================================
-    const saved = await CMSContent.create({
-      title,
-      description,
-      displayTo: displayToValue,
-      heroVideoUrl,
-      media,
-      mediaGroup,
-      meta: {
-        tag: metaTag,
-        description: metaDescription,
-        keywords: cleanKeywords, // FIXED
-        visibleDate,
-        visibleTime,
-      },
-      author: "Admin",
-      status: "Pending Review",
-    });
+// ============================================
+// 6️⃣ Save to MongoDB
+// ============================================
+const saved = await CMSContent.create({
+  title,
+  description,
+  displayTo: displayToValue,
+  heroVideoUrl,
+  media,
+  mediaGroup,
+
+  // NEW FIELD — save banner styles
+  bannerStyle: parsedBannerStyle,
+
+  meta: {
+    tag: metaTag,
+    description: metaDescription,
+    keywords: cleanKeywords,
+    visibleDate,
+    visibleTime,
+  },
+
+  author: "Admin",
+  status: "Pending Review",
+});
+
+
 
     res.json({ success: true, message: "Saved (Pending Review)", saved });
   } catch (err) {
@@ -312,6 +336,7 @@ router.get("/similar/:id", async (req, res) => {
 router.get("/public", async (req, res) => {
   try {
     const all = await CMSContent.find({ status: "Approved" });
+    const allFonts = await CMSFont.find();
 
     const response = {
       heroVideoUrl: null,
@@ -319,36 +344,50 @@ router.get("/public", async (req, res) => {
       womenPageVideoUrl: null,
       accessoriesVideoUrl: null,
       heritageVideoUrl: null,
-      banners: {},
-      men4Grid: [],
+
+      banners: {
+        bannerOne: null,
+        bannerTwo: null,
+      },
+
       women4Grid: [],
-      menGrid: [],
+      men4Grid: [],
       womenGrid: [],
+      menGrid: [],
+
       bannerCarousel: [],
       posts: [],
+      fonts: [],
     };
 
     all.forEach((item) => {
+      // -----------------------------
+      // VIDEOS
+      // -----------------------------
       if (item.displayTo === "home-landing-video")
-        response.heroVideoUrl = item.media?.url || item.heroVideoUrl;
+        response.heroVideoUrl = item.media?.url;
 
       if (item.displayTo === "men-page-video")
-        response.menPageVideoUrl = item.media?.url || item.heroVideoUrl;
+        response.menPageVideoUrl = item.media?.url;
 
       if (item.displayTo === "women-page-video")
-        response.womenPageVideoUrl = item.media?.url || item.heroVideoUrl;
+        response.womenPageVideoUrl = item.media?.url;
 
       if (item.displayTo === "accessories-video")
-        response.accessoriesVideoUrl = item.media?.url || item.heroVideoUrl;
+        response.accessoriesVideoUrl = item.media?.url;
 
       if (item.displayTo === "heritage-video")
-        response.heritageVideoUrl = item.media?.url || item.heroVideoUrl;
+        response.heritageVideoUrl = item.media?.url;
 
+      // -----------------------------
+      // BANNERS
+      // -----------------------------
       if (item.displayTo === "bannerOne")
         response.banners.bannerOne = {
           image: item.media?.url,
           title: item.media?.title || item.title || "",
           description: item.media?.description || item.description || "",
+          style: item.bannerStyle || {},
         };
 
       if (item.displayTo === "bannerTwo")
@@ -356,23 +395,64 @@ router.get("/public", async (req, res) => {
           image: item.media?.url,
           title: item.media?.title || item.title || "",
           description: item.media?.description || item.description || "",
+          style: item.bannerStyle || {},
         };
 
+      // -----------------------------
+      // WOMEN 4 GRID
+      // -----------------------------
       if (item.displayTo === "women-4grid")
-        response.women4Grid = item.mediaGroup.sort((a, b) => a.order - b.order);
+        response.women4Grid = item.mediaGroup
+          ?.sort((a, b) => a.order - b.order)
+          ?.map((g) => ({
+            ...g,
+            style: g.style || item.bannerStyle || {},
+          }));
 
+      // -----------------------------
+      // MEN 4 GRID
+      // -----------------------------
       if (item.displayTo === "men-4grid")
-        response.men4Grid = item.mediaGroup.sort((a, b) => a.order - b.order);
+        response.men4Grid = item.mediaGroup
+          ?.sort((a, b) => a.order - b.order)
+          ?.map((g) => ({
+            ...g,
+            style: g.style || item.bannerStyle || {},
+          }));
 
+      // -----------------------------
+      // WOMEN 5 GRID
+      // -----------------------------
       if (item.displayTo === "women-grid")
-        response.womenGrid = item.mediaGroup.sort((a, b) => a.order - b.order);
+        response.womenGrid = item.mediaGroup
+          ?.sort((a, b) => a.order - b.order)
+          ?.map((g) => ({
+            ...g,
+            style: g.style || item.bannerStyle || {},
+          }));
 
+      // -----------------------------
+      // MEN 5 GRID
+      // -----------------------------
       if (item.displayTo === "men-grid")
-        response.menGrid = item.mediaGroup.sort((a, b) => a.order - b.order);
+        response.menGrid = item.mediaGroup
+          ?.sort((a, b) => a.order - b.order)
+          ?.map((g) => ({
+            ...g,
+            style: g.style || item.bannerStyle || {},
+          }));
 
+      // -----------------------------
+      // BANNER CAROUSEL
+      // -----------------------------
       if (item.displayTo === "home-banner-carousel")
-        response.bannerCarousel.push(...item.mediaGroup.map((m) => m.imageUrl));
+        response.bannerCarousel.push(
+          ...(item.mediaGroup || []).map((m) => m.imageUrl)
+        );
 
+      // -----------------------------
+      // POSTS
+      // -----------------------------
       if (item.displayTo === "post")
         response.posts.push({
           title: item.title,
@@ -381,11 +461,65 @@ router.get("/public", async (req, res) => {
         });
     });
 
+    // -----------------------------
+    // FONTS
+    // -----------------------------
+    response.fonts = allFonts.map((f) => ({
+      name: f.fontName,
+      url: f.fontUrl,
+      weight: f.fontWeight,
+      style: f.fontStyle,
+    }));
+
     return res.json(response);
+
   } catch (err) {
+    console.error("❌ Public CMS Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+
+router.get("/fonts", async (req, res) => {
+  try {
+    const fonts = await CMSFont.find().sort({ createdAt: -1 });
+    res.json({ success: true, fonts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/upload-font", upload.single("font"), async (req, res) => {
+  try {
+    const file = req.file;
+
+    if (!file)
+      return res.status(400).json({ error: "Font file is required" });
+
+    const fontName = req.body.fontName;
+    const fontWeight = req.body.fontWeight || "400";
+    const fontStyle = req.body.fontStyle || "normal";
+
+    if (!fontName)
+      return res.status(400).json({ error: "Font name is required" });
+
+    // Upload font to S3
+    const fontUrl = await uploadToS3(file, "fonts");
+
+    const saved = await CMSFont.create({
+      fontName,
+      fontUrl,
+      fontWeight,
+      fontStyle,
+    });
+
+    res.json({ success: true, font: saved });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 // =============================
 // ✅ Approve / Reject (Admin Only)
@@ -425,4 +559,82 @@ router.patch("/reject/:id", async (req, res) => {
   }
 });
 
+router.get("/:id", async (req, res) => {
+  try {
+    const item = await CMSContent.findById(req.params.id);
+
+    if (!item) {
+      return res.status(404).json({ error: "CMS content not found" });
+    }
+
+    res.json(item);
+  } catch (err) {
+    console.error("GET CMS Content Error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+router.put("/update/:id", upload.any(), async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const existing = await CMSContent.findById(id);
+    if (!existing) {
+      return res.status(404).json({ error: "Content not found" });
+    }
+
+    // Parse bannerStyle JSON if exists
+    let bannerStyle = existing.bannerStyle;
+    if (req.body.bannerStyle) {
+      try {
+        bannerStyle = JSON.parse(req.body.bannerStyle);
+      } catch (e) {}
+    }
+
+    // Update main fields
+    existing.title = req.body.title || existing.title;
+    existing.description = req.body.description || existing.description;
+    existing.displayTo = req.body.displayTo || existing.displayTo;
+
+    // Meta fields
+    existing.meta = {
+      tag: req.body.metaTag || existing.meta.tag,
+      description: req.body.metaDescription || existing.meta.description,
+      keywords: req.body.keywords || existing.meta.keywords,
+      visibleDate: req.body.visibleDate || existing.meta.visibleDate,
+      visibleTime: req.body.visibleTime || existing.meta.visibleTime,
+    };
+
+    existing.bannerStyle = bannerStyle;
+
+    /* ------------------------------
+       FILE UPLOAD HANDLING (SINGLE)
+    ------------------------------- */
+    if (req.file) {
+      existing.media = req.file.location;
+    }
+
+    /* ------------------------------
+       MULTI FILE (GRID / CAROUSEL)
+    ------------------------------- */
+    if (req.files && req.files.length > 0) {
+      const titles = JSON.parse(req.body.titles || "[]");
+      const descriptions = JSON.parse(req.body.descriptions || "[]");
+
+      existing.mediaGroup = req.files.map((file, i) => ({
+        imageUrl: file.location,
+        title: titles[i] || "",
+        description: descriptions[i] || "",
+        order: i + 1,
+      }));
+    }
+
+    await existing.save();
+
+    res.json({ success: true, updated: existing });
+  } catch (err) {
+    console.error("UPDATE CMS ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 module.exports = router;
