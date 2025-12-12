@@ -216,7 +216,6 @@ app.use(errorHandler);
 // START SERVER
 // ----------------------------
 const PORT = cliPort || process.env.PORT || 5500;
-
 const HOST = "0.0.0.0";
 server.listen(PORT, HOST, () => {
   console.log(`\n✅ Server running on port ${PORT}`);
