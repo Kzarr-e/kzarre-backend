@@ -42,10 +42,10 @@ io.on("connection", (socket) => {
   });
 });
 
-app.use(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" })
-);
+// app.use(
+//   "/api/stripe/webhook",
+//   express.raw({ type: "application/json" })
+// );
 
 app.use("/api/stripe", require("./routes/stripeWebhook"));
 
@@ -151,10 +151,9 @@ const isLocal = process.env.NODE_ENV !== "production";
 
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: isLocal ? 5000 : 200,  // local = unlimited
+  max: isLocal ? 5000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
-    keyGenerator: rateLimit.ipKeyGenerator,
 });
 
 app.use((req, res, next) => {
