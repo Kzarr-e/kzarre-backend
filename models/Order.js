@@ -50,29 +50,47 @@ status: {
   
 stockReduced: { type: Boolean, default: false },
 
-  shipment: {
-    carrier: {
-      type: String,
-      enum: ["ups", "fedex", "dhl", "manual"],
-    },
-    trackingId: String,
+shipment: {
+  carrier: String,
+  service: String,
 
-    status: {
-      type: String,
-      enum: [
-        "label_created",
-        "picked_up",
-        "in_transit",
-        "out_for_delivery",
-        "delivered",
-        "exception",
-      ],
-    },
+  trackingId: String,
+  labelUrl: String,
 
-    labelUrl: String,
-    shippedAt: Date,
-    deliveredAt: Date,
+  rate: {
+    amount: Number,
+    currency: { type: String, default: "USD" },
   },
+
+  status: {
+    type: String,
+    enum: [
+      "pending",
+      "label_created",
+      "picked_up",
+      "in_transit",
+      "out_for_delivery",
+      "delivered",
+      "exception",
+      "cancelled",
+      "return_initiated",
+      "returned",
+    ],
+    default: "pending",
+  },
+
+  history: [
+    {
+      status: String,
+      note: String,
+      date: { type: Date, default: Date.now },
+    },
+  ],
+
+  shippedAt: Date,
+  deliveredAt: Date,
+},
+
 
   createdAt: { type: Date, default: Date.now },
 });

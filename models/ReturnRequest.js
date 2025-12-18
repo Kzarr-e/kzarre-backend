@@ -1,55 +1,43 @@
-// models/ReturnRequest.js
 const mongoose = require("mongoose");
-
-const ReturnItemSchema = new mongoose.Schema(
-  {
-    product: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
-    quantity: { type: Number, required: true, min: 1 },
-    reason: { type: String },
-    condition: {
-      type: String,
-      enum: ["unopened", "opened", "damaged", "defective", "other"],
-      default: "unopened",
-    },
-  },
-  { _id: false }
-);
 
 const ReturnRequestSchema = new mongoose.Schema(
   {
-    order: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
-      required: true,
-    },
-    customer: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Customer",
-      required: true,
-    },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    items: [ReturnItemSchema],
+    reason: String,
 
     status: {
       type: String,
       enum: ["pending", "approved", "denied", "completed"],
       default: "pending",
-      index: true,
     },
 
-    reasonGeneral: { type: String }, // e.g. "size issue", "wrong item", etc.
-    adminNotes: { type: String },
+    restockItems: { type: Boolean, default: false },
+    adminNote: String,
 
-    restockOnApproval: { type: Boolean, default: true },
-    restockedAt: { type: Date },
+    // ✅ Reverse shipment info
+    returnShipment: {
+      courier: String,
+      trackingId: String,
+      labelUrl: String,
+      status: {
+        type: String,
+        enum: ["created", "picked", "in_transit", "delivered"],
+        default: "created",
+      },
+    },
 
-    refundAmount: { type: Number, default: 0 },
+    // ✅ SLA control
+    sla: {
+      pickupBy: Date,
+      completeBy: Date,
+      breached: { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("ReturnRequest", ReturnRequestSchema);
+module.exports =
+  mongoose.models.ReturnRequest ||
+  mongoose.model("ReturnRequest", ReturnRequestSchema);

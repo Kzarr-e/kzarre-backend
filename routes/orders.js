@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const Order = require("../models/Order");
 const Product = require("../models/product");
+const CourierPartner = require("../models/CourierPartner.model");
+const createShipment = require("../services/createShipment");
 
 // ================================
 // ADMIN AUTH
@@ -216,6 +218,118 @@ router.get("/:orderId", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Error fetching order",
+    });
+  }
+});
+
+// ==================================================
+// 🚚 ADMIN: CREATE SHIPMENT & ASSIGN TRACKING
+// POST /api/orders/:orderId/ship
+// ==================================================
+router.post("/:orderId/ship", async (req, res) => {
+  try {
+    const { courierSlug } = req.body;
+
+    const order = await Order.findOne({ orderId: req.params.orderId });
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
+
+    if (order.shipment?.trackingId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already created",
+      });
+    }
+
+    const courier = await CourierPartner.findOne({
+      slug: courierSlug,
+      enabled: true,
+    });
+
+    if (!courier)
+      return res.status(400).json({
+        success: false,
+        message: "Courier not found or disabled",
+      });
+
+    // 🔥 CREATE SHIPMENT (DYNAMIC)
+    const shipment = await createShipment(order, courier);
+
+    order.shipment = {
+      carrier: courier.slug,
+      trackingId: shipment.trackingId,
+      labelUrl: shipment.labelUrl,
+      status: "label_created",
+      shippedAt: new Date(),
+    };
+
+    order.status = "shipped";
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: "Shipment created",
+      order,
+    });
+  } catch (err) {
+    console.error("SHIP ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Shipment creation failed",
+    });
+  }
+});
+
+// ==================================================
+// 🚚 ADMIN: UPDATE SHIPMENT STATUS
+// PATCH /api/orders/:orderId/shipment
+// ==================================================
+router.patch("/:orderId/shipment", async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    const validStatuses = [
+      "label_created",
+      "picked_up",
+      "in_transit",
+      "out_for_delivery",
+      "delivered",
+      "exception",
+    ];
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipment status",
+      });
+    }
+
+    const order = await Order.findOne({ orderId: req.params.orderId });
+    if (!order || !order.shipment)
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+
+    order.shipment.status = status;
+
+    if (status === "delivered") {
+      order.shipment.deliveredAt = new Date();
+      order.status = "delivered";
+    }
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: "Shipment updated",
+      order,
+    });
+  } catch (err) {
+    console.error("SHIPMENT UPDATE ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update shipment",
     });
   }
 });

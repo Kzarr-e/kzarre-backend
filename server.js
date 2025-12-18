@@ -186,7 +186,6 @@ app.use("/api/otp-password", require("./routes/otpPassword"));
 app.use("/api/email-otp-password", require("./routes/emailOtpPassword"));
 app.use("/api/search", require("./routes/search"));
 app.use("/api/notify", require("./routes/notifyRoutes"))
-app.use("/api/admin/shipping", require("./routes/adminShipping"));
 app.use("/api/admin/returns", require("./routes/adminReturns"));
 app.use("/api/admin/audit", require("./routes/adminAudit"));
 app.use("/api/admin/campaign", require("./routes/adminCampaign"));
@@ -196,6 +195,9 @@ app.use("/api/crm", require("./routes/adminCRM"));
 app.use("/cms", require("./routes/cmsFont"));
 app.use("/api/admin/stories", require("./routes/adminStories.routes"));
 app.use("/api/stories", require("./routes/publicStories.routes"));
+app.use("/api/admin/couriers", require("./routes/admin/couriers"));
+app.use("/api/webhooks/courier", require("./routes/webhooks/courierWebhook"));
+app.use("/api/admin/logistics", require("./routes/admin/logisticsAnalytics"));
 
 
 

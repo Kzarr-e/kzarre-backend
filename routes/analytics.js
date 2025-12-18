@@ -113,7 +113,7 @@ router.get('/summary', async (req, res) => {
     const revenueAgg = await Order.aggregate([
       {
         $match: {
-          paymentStatus: "paid" // 🔥 REQUIRED
+          status: "paid" // 🔥 REQUIRED
         }
       },
       {
@@ -305,7 +305,7 @@ router.get('/orders/daily', async (req, res) => {
   try {
     const orders = await Order.aggregate([
       {
-        $match: { paymentStatus: "paid" }
+        $match: { status: "paid" }
       },
       {
         $group: {
@@ -330,24 +330,61 @@ router.get('/orders/daily', async (req, res) => {
 // ---------------------------
 // TOP 5 SELLING PRODUCTS
 // ---------------------------
-router.get('/top-products', async (req, res) => {
+router.get("/top-products", async (req, res) => {
   try {
     const products = await Order.aggregate([
-      { $unwind: '$items' },
-      { $group: { _id: '$items.product', sold: { $sum: '$items.quantity' } } },
+      // ✅ only successful orders
+      { $match: { status: "paid" } },
+
+      { $unwind: "$items" },
+
+      {
+        $group: {
+          _id: "$items.product",
+          sold: { $sum: "$items.qty" }, // 🔥 FIX HERE
+        },
+      },
+
       { $sort: { sold: -1 } },
       { $limit: 5 },
-      { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'product' } },
-      { $unwind: '$product' },
-      { $project: { _id: 1, sold: 1, name: '$product.name', category: '$product.category', sku: '$product.sku' } }
+
+      {
+        $lookup: {
+          from: "products", // ✅ correct collection
+          localField: "_id",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+
+      {
+        $addFields: {
+          product: { $arrayElemAt: ["$product", 0] },
+        },
+      },
+
+      { $match: { product: { $ne: null } } },
+
+      {
+        $project: {
+          _id: 0,
+          productId: "$product._id",
+          name: "$product.name",          // ✅ NOW WORKS
+          category: "$product.category",
+          sku: "$product.sku",
+          sold: 1,
+        },
+      },
     ]);
 
     res.json({ success: true, products });
   } catch (err) {
-    console.error('Top products error:', err);
-    res.status(500).json({ success: false, message: 'Top products failed' });
+    console.error("Top products error:", err);
+    res.status(500).json({ success: false });
   }
 });
+
+
 
 // ---------------------------
 // CATEGORY SALES REPORT
@@ -355,19 +392,41 @@ router.get('/top-products', async (req, res) => {
 router.get('/category-sales', async (req, res) => {
   try {
     const data = await Order.aggregate([
-      { $unwind: '$items' },
-      { $lookup: { from: 'products', localField: 'items.productId', foreignField: '_id', as: 'product' } },
-      { $unwind: '$product' },
-      { $group: { _id: '$product.category', total: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } },
+      { $match: { status: "paid" } }, // ✅ only paid orders
+
+      { $unwind: "$items" },
+
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.product",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+
+      { $unwind: "$product" },
+
+      {
+        $group: {
+          _id: "$product.category",
+          total: { $sum: "$items.qty" },
+          revenue: {
+            $sum: { $multiply: ["$items.qty", "$items.price"] }
+          }
+        }
+      },
+
       { $sort: { total: -1 } }
     ]);
 
     res.json({ success: true, data });
   } catch (err) {
-    console.error('Category sales error:', err);
-    res.status(500).json({ success: false, message: 'Category sales failed' });
+    console.error("Category sales error:", err);
+    res.status(500).json({ success: false, message: "Category sales failed" });
   }
 });
+
 
 /* ==================================================
    HELPER ADMIN ENDPOINTS

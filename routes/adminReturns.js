@@ -3,124 +3,148 @@ const router = express.Router();
 
 const ReturnRequest = require("../models/ReturnRequest");
 const Order = require("../models/Order");
-const Product = require("../models/product"); // note: lowercase file in your project
+const Product = require("../models/product");
 
-// ✅ LIST return requests with optional filter ?status=pending (NO AUTH)
-router.get("/", async (req, res) => {
-  try {
-    const { status } = req.query;
-    const filter = {};
-    if (status) filter.status = status;
+const createReverseShipment = require("../services/createReverseShipment");
 
-    const returns = await ReturnRequest.find(filter)
-      .populate("order")
-      .populate("customer")
-      .populate("items.product")
-      .sort({ createdAt: -1 });
+/**
+ * GET ALL RETURNS
+ * /api/admin/returns?status=pending|approved|denied|completed
+ */
+router.get("/:orderId", async (req, res) => {
+  const ret = await ReturnRequest.findOne({ orderId: req.params.orderId });
 
-    res.json(returns);
-  } catch (err) {
-    console.error("GET /admin/returns error:", err);
-    res.status(500).json({ message: "Failed to fetch return requests" });
+  if (!ret) {
+    return res.status(404).json({ message: "No return found" });
   }
+
+  const order = await Order.findById(ret.orderId);
+
+  res.json({
+    status: ret.status,
+    reason: ret.reason,
+    courier: ret.returnShipment?.courier,
+    trackingId: ret.returnShipment?.trackingId,
+    labelUrl: ret.returnShipment?.labelUrl,
+    timeline: order.shipping?.history || [],
+    sla: ret.sla,
+  });
 });
 
-// ✅ CREATE a return request (NO AUTH)
-router.post("/", async (req, res) => {
-  try {
-    const { orderId, items, reasonGeneral, restockOnApproval = true } =
-      req.body;
+router.get("/", async (req, res) => {
+  const { status } = req.query;
 
-    const order = await Order.findById(orderId);
+  const filter =
+    status && status !== "all" ? { status } : {};
+
+  const returns = await ReturnRequest
+    .find(filter)
+    .sort({ createdAt: -1 });
+
+  res.json(returns);
+});
+
+router.post("/exchange", async (req, res) => {
+  const { orderId, reason, size, color } = req.body;
+
+  const ret = await ReturnRequest.create({
+    orderId,
+    reason,
+    exchange: {
+      enabled: true,
+      newVariant: { size, color },
+    },
+  });
+
+  res.json(ret);
+});
+
+/**
+ * UPDATE RETURN STATUS
+ * PATCH /api/admin/returns/:id/status
+ */
+router.patch("/:id/status", async (req, res) => {
+  try {
+    const { status, restockItems, note } = req.body;
+
+    const ret = await ReturnRequest.findById(req.params.id);
+    if (!ret) {
+      return res.status(404).json({ message: "Return not found" });
+    }
+
+    const order = await Order.findById(ret.orderId)
+      .populate("items.product");
+
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    const customerId = order.customer;
-
-    const returnRequest = await ReturnRequest.create({
-      order: orderId,
-      customer: customerId,
-      items,
-      reasonGeneral,
-      restockOnApproval,
-    });
-
-    res.status(201).json(returnRequest);
-  } catch (err) {
-    console.error("POST /admin/returns error:", err);
-    res.status(500).json({ message: "Failed to create return request" });
-  }
-});
-
-/**
- * ✅ UPDATE status: approve / deny / complete (NO AUTH)
- * Body: { status: "approved" | "denied" | "completed", adminNotes?, refundAmount?, restockItems? }
- */
-router.patch("/:id/status", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status, adminNotes, refundAmount, restockItems } = req.body;
-
-    if (!["pending", "approved", "denied", "completed"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
-    }
-
-    const returnReq = await ReturnRequest.findById(id).populate(
-      "items.product"
-    );
-    if (!returnReq) {
-      return res.status(404).json({ message: "Return request not found" });
-    }
-
-    // ✅ If approving and restocking is requested
+    /* ============================
+       APPROVE → CREATE REVERSE SHIPMENT
+    ============================ */
     if (status === "approved") {
-      if (restockItems) {
-        await restockProducts(returnReq);
-        returnReq.restockedAt = new Date();
+      const shipment = await createReverseShipment(order, ret);
+
+      ret.returnShipment = shipment;
+
+      // SLA rules
+      ret.sla = {
+        pickupBy: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+        completeBy: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      };
+
+      // Update order shipping
+      order.shipping = order.shipping || {};
+      order.shipping.status = "return_initiated";
+      order.shipping.trackingId = shipment.trackingId;
+      order.shipping.courier = shipment.courier;
+
+      order.shipping.history = order.shipping.history || [];
+      order.shipping.history.push({
+        status: "return_pickup_created",
+        date: new Date(),
+      });
+    }
+
+    /* ============================
+       RESTOCK INVENTORY
+    ============================ */
+    if (status === "approved" && restockItems) {
+      for (const item of order.items) {
+        const product = await Product.findById(item.product._id);
+        if (!product) continue;
+
+        product.stockQuantity += item.qty;
+        await product.save();
       }
     }
 
+    /* ============================
+       FINALIZE RETURN
+    ============================ */
     if (status === "completed") {
-      if (returnReq.restockOnApproval && !returnReq.restockedAt) {
-        await restockProducts(returnReq);
-        returnReq.restockedAt = new Date();
-      }
+      order.shipping.status = "returned";
+      order.shipping.history.push({
+        status: "return_completed",
+        date: new Date(),
+      });
     }
 
-    returnReq.status = status;
-    if (typeof adminNotes === "string") returnReq.adminNotes = adminNotes;
-    if (typeof refundAmount === "number") {
-      returnReq.refundAmount = refundAmount;
-    }
+    /* ============================
+       COMMON UPDATES
+    ============================ */
+    ret.status = status;
+    ret.restockItems = !!restockItems;
+    ret.adminNote = note || "";
+    await ret.save();
 
-    await returnReq.save();
+    await order.save();
 
-    res.json(returnReq);
+    res.json(ret);
   } catch (err) {
-    console.error("PATCH /admin/returns/:id/status error:", err);
-    res.status(500).json({ message: "Failed to update return status" });
+    console.error("RETURN UPDATE ERROR:", err);
+    res.status(500).json({ message: "Return update failed" });
   }
 });
-
-// ✅ Helper to restock products
-async function restockProducts(returnReq) {
-  const bulkOps = [];
-
-  returnReq.items.forEach((item) => {
-    if (!item.product || !item.quantity) return;
-
-    bulkOps.push({
-      updateOne: {
-        filter: { _id: item.product._id || item.product },
-        update: { $inc: { stock: item.quantity } },
-      },
-    });
-  });
-
-  if (bulkOps.length > 0) {
-    await Product.bulkWrite(bulkOps);
-  }
-}
 
 module.exports = router;
