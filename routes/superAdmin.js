@@ -162,18 +162,36 @@ router.post("/login/verify", async (req, res) => {
     // ✅ Set cookie
     res.cookie("refresh_token", refreshToken, DEV_COOKIE);
 
-    res.json({
-      success: true,
-      message: "Login successful",
-      accessToken,
-      refreshToken, // ✅ ADD THIS
-      admin: {
-        id: superAdmin._id,
-        name: superAdmin.name,
-        email: superAdmin.email,
-        role: "superadmin",
-      },
-    });
+  res.json({
+  success: true,
+  message: "Login successful",
+  accessToken,
+  refreshToken,
+  role: "superadmin",
+
+  // 🔥 THIS IS THE FIX
+  permissions: superAdmin.permissions || [
+  "view_dashboard",
+  "manage_users",
+  "create_user",
+  "manage_cms",
+  "view_analytics",
+  "manage_orders",
+  "manage_stories",
+  "manage_shipping",
+  "view_crm",
+  "manage_marketing",
+  "view_finance",
+  "manage_security",
+  "manage_settings",
+  ],
+
+  admin: {
+    id: superAdmin._id,
+    name: superAdmin.name,
+    email: superAdmin.email,
+  },
+});
   } catch (err) {
     console.error("Verify Login Error:", err);
     res.status(500).json({ message: "Server error" });

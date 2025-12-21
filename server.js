@@ -34,13 +34,13 @@ const io = new Server(server, {
 
 global.io = io;
 
-io.on("connection", (socket) => {
-  console.log("Admin connected:", socket.id);
+// io.on("connection", (socket) => {
+//   console.log("Admin connected:", socket.id);
 
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-  });
-});
+//   socket.on("disconnect", () => {
+//     console.log("User disconnected:", socket.id);
+//   });
+// });
 
 // app.use(
 //   "/api/stripe/webhook",
@@ -48,7 +48,6 @@ io.on("connection", (socket) => {
 // );
 
 app.use("/api/stripe", require("./routes/stripeWebhook"));
-
 // ----------------------------
 // SECURITY + BASE MIDDLEWARE
 // ----------------------------
@@ -58,18 +57,18 @@ app.use(cookieParser());
 // ============================
 // 🔍 AUTH + COOKIE DEBUG (DEV ONLY)
 // ============================
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV !== "production") {
-    console.log("\n🔍 AUTH DEBUG");
-    console.log("➡️ URL:", req.method, req.originalUrl);
-    console.log("🍪 Cookies:", req.cookies || "NONE");
-    console.log("🪪 Authorization:", req.headers.authorization || "NONE");
-    console.log("🌐 Origin:", req.headers.origin || "NONE");
-    console.log("📡 IP:", req.ip);
-    console.log("✅ END AUTH DEBUG\n");
-  }
-  next();
-});
+// app.use((req, res, next) => {
+//   if (process.env.NODE_ENV !== "production") {
+//     console.log("\n🔍 AUTH DEBUG");
+//     console.log("➡️ URL:", req.method, req.originalUrl);
+//     console.log("🍪 Cookies:", req.cookies || "NONE");
+//     console.log("🪪 Authorization:", req.headers.authorization || "NONE");
+//     console.log("🌐 Origin:", req.headers.origin || "NONE");
+//     console.log("📡 IP:", req.ip);
+//     console.log("✅ END AUTH DEBUG\n");
+//   }
+//   next();
+// });
    // <-- FIXED (must be early)
 app.use(morgan("dev"));
 app.use("/uploads", express.static("uploads"));
@@ -198,11 +197,13 @@ app.use("/api/stories", require("./routes/publicStories.routes"));
 app.use("/api/admin/couriers", require("./routes/admin/couriers"));
 app.use("/api/webhooks/courier", require("./routes/webhooks/courierWebhook"));
 app.use("/api/admin/logistics", require("./routes/admin/logisticsAnalytics"));
+app.use("/api/admin", require("./routes/admin.auth"));
+app.use("/api/admin/email-templates", require("./routes/admin/emailTemplates"));
+app.use("/api/admin/orders", require("./routes/admin/orders") );
+app.use("/api/admin/media", require("./routes/admin/media"));
+app.use("/api/profile", require("./routes/profile.routes"));
 
 
-
-//checking zero down with deployment 
-// checking the new system update is added to aws 
 app.get("/", (req, res) => {
   res.json({
     status: "OK",

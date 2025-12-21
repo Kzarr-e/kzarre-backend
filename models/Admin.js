@@ -16,29 +16,18 @@ const AdminSchema = new mongoose.Schema(
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     password: { type: String, required: true },
-    role: {
-      type: String,
-      enum: ["superadmin", "admin", "user"],
-      default: "admin",
+
+    roleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Role",
+      required: true,
     },
-    group: {
-      type: String,
-      enum: [
-        "none",
-        "sales_manager",
-        "inventory_manager",
-        "hr_manager",
-        "finance_manager",
-      ],
-      default: "none",
-    },
-    permissions: [{ type: String }],
+
+    permissions: [{ type: String }], // optional overrides
     isActive: { type: Boolean, default: true },
 
-    // 🟢 Single active session
     currentSession: sessionSchema,
 
-    // 🧾 Logs for all login/logout activities
     activityLogs: [
       {
         action: String,
@@ -52,3 +41,4 @@ const AdminSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("Admin", AdminSchema);
+

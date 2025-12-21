@@ -54,84 +54,102 @@ router.post("/create-order", async (req, res) => {
   try {
     const { userId, productId, qty, size, color, address } = req.body;
 
-    if (!productId || !qty || !address) {
-      return res.status(400).json({ success: false, message: "Missing fields" });
+    if (!productId || !qty || !address?.name || !address?.phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
     }
 
     const product = await Product.findById(productId);
-    if (!product)
+    if (!product) {
       return res.status(404).json({ success: false, message: "Product not found" });
+    }
 
-    // 🔍 Validate stock
+    /* =========================
+       STOCK CHECK (NO DEDUCT)
+    ========================= */
     let variant = null;
 
     if (product.variants?.length) {
       variant = product.variants.find(
-        (v) => v.size === size && (color ? v.color === color : true)
+        v => v.size === size && (!color || v.color === color)
       );
 
-      if (!variant || (variant.stock || 0) < qty) {
+      if (!variant || variant.stock < qty) {
         return res.status(400).json({
           success: false,
           message: "Variant out of stock",
         });
       }
-
-      // 🔒 LOCK STOCK
-      variant.stock -= qty;
-      product.stockQuantity = product.variants.reduce(
-        (s, v) => s + Number(v.stock || 0),
-        0
-      );
     } else {
-      if ((product.stockQuantity || 0) < qty) {
+      if (product.stockQuantity < qty) {
         return res.status(400).json({
           success: false,
           message: "Out of stock",
         });
       }
-
-      product.stockQuantity -= qty;
     }
 
-    await product.save();
-
-    // ✅ GET USER EMAIL
-    let userEmail = address?.email || null;
+    /* =========================
+       USER EMAIL
+    ========================= */
+    let userEmail = address.email || null;
     if (userId) {
       const user = await User.findById(userId).select("email");
       if (user?.email) userEmail = user.email;
     }
 
+    /* =========================
+       PRICING
+    ========================= */
     const subtotal = product.price * qty;
     const deliveryFee = 15;
     const totalAmount = subtotal + deliveryFee;
 
+    /* =========================
+       EASYSHIP-COMPATIBLE ADDRESS
+    ========================= */
+    const normalizedAddress = {
+      name: address.name,
+      phone: address.phone,
+      line1: address.line1 || address.address || "",
+      city: address.city,
+      state: address.state || "",
+     pincode: address.pincode,
+      country_alpha2: address.countryCode || "IN",
+    };
+
+    /* =========================
+       CREATE ORDER
+    ========================= */
     const order = await Order.create({
       userId: userId ? new mongoose.Types.ObjectId(userId) : null,
-      email: userEmail, // ✅ STORED
-      items: [
-        {
-          product: productId,
-          qty,
-          price: product.price,
-          name: product.name,
-          image: product.imageUrl,
-          size: size || "",
-          color: color || "",
-          sku: product.sku || "N/A",
-          barcode: variant?.barcode || product.sku || "N/A",
-        },
-      ],
-      address,
+      email: userEmail,
+
+      items: [{
+        product: productId,
+        qty,
+        price: product.price,
+        name: product.name,
+        image: product.imageUrl,
+        size: size || "",
+        color: color || "",
+        sku: product.sku || "N/A",
+        barcode: variant?.barcode || product.sku || "N/A",
+      }],
+
+      address: normalizedAddress,
       amount: totalAmount,
       orderId: generateOrderId(),
 
       paymentMethod: "STRIPE",
       paymentId: null,
 
-      status: "pending_payment", 
-      stockReduced: true,
+      status: "pending_payment",
+      requiresShipment: true,   // 🔥 IMPORTANT
+      stockReduced: false,      // reduce AFTER payment
+
       createdAt: new Date(),
     });
 
@@ -141,6 +159,7 @@ router.post("/create-order", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
+
 
 /* ==================================================
    STRIPE PAY

@@ -31,11 +31,13 @@ const CourierPartnerSchema = new mongoose.Schema(
     },
 
     endpoints: {
-      rate: String,      // /rates
-      shipment: String,  // /shipments
-      tracking: String,  // /track
+      createShipment: String, // POST
+      getRates: String,       // POST
+      buyLabel: String,       // POST
+      tracking: String,       // GET
       cancel: String,
     },
+
 
     headersTemplate: Object,   // dynamic headers
     payloadTemplate: Object,   // dynamic request body mapping

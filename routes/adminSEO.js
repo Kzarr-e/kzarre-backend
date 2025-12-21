@@ -4,12 +4,12 @@ const SEOSettings = require("../models/SEOSettings");
 const { auth } = require("../middlewares/auth");
 
 // Get SEO
-router.get("/", auth(), async (req, res) => {
+router.get("/", async (req, res) => {
   res.json(await SEOSettings.find());
 });
 
 // Save SEO
-router.post("/", auth(), async (req, res) => {
+router.post("/",  async (req, res) => {
   const seo = await SEOSettings.findOneAndUpdate(
     { page: req.body.page },
     req.body,

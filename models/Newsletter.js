@@ -2,20 +2,35 @@ const mongoose = require("mongoose");
 
 const NewsletterSchema = new mongoose.Schema(
   {
-    email: {
+    subject: {
       type: String,
       required: true,
-      unique: true,
-      lowercase: true,
       trim: true,
     },
-    source: {
-      type: String,
-      default: "footer",
+
+    content: {
+      type: String, // fallback HTML
     },
-    subscribedAt: {
+
+    blocks: {
+      type: Array, // editor blocks
+      default: [],
+    },
+
+    status: {
+      type: String,
+      enum: ["draft", "send", "sent"],
+      default: "draft",
+    },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    sentAt: {
       type: Date,
-      default: Date.now,
     },
   },
   { timestamps: true }

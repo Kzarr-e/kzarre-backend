@@ -1,12 +1,25 @@
 const mongoose = require("mongoose");
 
-const LeadSchema = new mongoose.Schema(
+const BlockSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ["text", "image", "button"],
+    required: true,
+  },
+  html: String,      // for text
+  src: String,       // for image
+  alt: String,
+  text: String,      // for button
+  url: String,
+});
+
+const EmailTemplateSchema = new mongoose.Schema(
   {
-    name: String,
-    email: String,
-    source: String,
+    name: { type: String, required: true },
+    blocks: [BlockSchema],
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Lead", LeadSchema);
+module.exports = mongoose.model("EmailTemplate", EmailTemplateSchema);

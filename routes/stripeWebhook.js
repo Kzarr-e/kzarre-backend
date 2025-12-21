@@ -2,11 +2,14 @@ const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
 const Order = require("../models/Order");
-const Product = require("../models/product");
-const { sendNotification } = require("../utils/notify");
-const { sendEmail } = require("../utils/sendEmail");
+const CourierPartner = require("../models/CourierPartner.model"); // ✅ make sure path is correct
+const createShipment = require("../services/createShipment");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+/* =====================================================
+   🔔 STRIPE WEBHOOK
+===================================================== */
 router.post(
   "/webhook",
   express.raw({ type: "application/json" }),
@@ -29,12 +32,11 @@ router.post(
 
     try {
       /* =====================================================
-         ✅ CHECKOUT SESSION COMPLETED (MAIN FLOW)
+         ✅ CHECKOUT SESSION COMPLETED
       ===================================================== */
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
         const orderId = session.metadata?.orderId;
-
         if (!orderId) return res.json({ received: true });
 
         const order = await Order.findOne({ orderId });
@@ -42,21 +44,67 @@ router.post(
           return res.json({ received: true });
         }
 
+        /* =====================
+           1️⃣ MARK ORDER PAID
+        ===================== */
         order.status = "paid";
         order.paymentMethod = "STRIPE";
         order.paymentId = session.payment_intent;
         await order.save();
 
-        console.log("✅ ORDER CONFIRMED (CHECKOUT):", orderId);
+        console.log("✅ ORDER PAID:", orderId);
+
+        /* =====================
+           2️⃣ AUTO CREATE SHIPMENT
+        ===================== */
+        // Prevent duplicate shipment
+        if (!order.shipment?.trackingId) {
+          const courier = await CourierPartner.findOne({
+            slug: "easyship",
+            enabled: true,
+          });
+        
+          if (courier) {
+            try {
+              const shipment = await createShipment(order, courier);
+
+              order.shipment = {
+                carrier: courier.slug,
+                trackingId: shipment.trackingId || null,
+                labelUrl: shipment.labelUrl || null,
+                status: "label_created",
+                history: [],
+                raw: shipment.raw,
+                createdAt: new Date(),
+              };
+
+              // Optional: move to shipped only if tracking exists
+              if (shipment.trackingId) {
+                order.status = "shipped";
+              }
+
+              await order.save();
+
+              console.log(
+                "📦 SHIPMENT CREATED:",
+                shipment.trackingId || "PENDING"
+              );
+            } catch (err) {
+              console.error("🚫 SHIPMENT ERROR:", err.message);
+            }
+            
+          } else {
+            console.warn("⚠️ EasyShip courier not enabled");
+          }
+        }
       }
 
       /* =====================================================
-         ✅ PAYMENT INTENT SUCCEEDED (CLI + FALLBACK)
+         ✅ PAYMENT INTENT SUCCEEDED (CLI / FALLBACK)
       ===================================================== */
       if (event.type === "payment_intent.succeeded") {
         const pi = event.data.object;
         const orderId = pi.metadata?.orderId;
-
         if (!orderId) return res.json({ received: true });
 
         const order = await Order.findOne({ orderId });
@@ -73,7 +121,7 @@ router.post(
       }
 
       /* =====================================================
-         ❌ PAYMENT FAILED / EXPIRED
+         ❌ FAILED / EXPIRED
       ===================================================== */
       if (
         event.type === "checkout.session.expired" ||
@@ -119,6 +167,5 @@ router.post(
     }
   }
 );
-
 
 module.exports = router;
