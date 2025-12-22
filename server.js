@@ -205,6 +205,8 @@ app.use("/api/admin/media", require("./routes/admin/media"));
 app.use("/api/profile", require("./routes/profile.routes"));
 app.use("/api/admin/system", require("./routes/admin/system"));
 
+// checking the new 
+
 
 app.get("/", (req, res) => {
   res.json({
