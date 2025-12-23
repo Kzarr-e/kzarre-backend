@@ -1,6 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+
 const Admin = require("../models/Admin");
 const Role = require("../models/Role");
 const Permission = require("../models/Permission");
@@ -8,33 +9,39 @@ const Permission = require("../models/Permission");
 const router = express.Router();
 
 /* =====================================================
-   ADMIN / SUPERADMIN LOGIN
+   ADMIN LOGIN
 ===================================================== */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1️⃣ Find admin
+    /* ===============================
+       1️⃣ FIND ADMIN
+    =============================== */
     const admin = await Admin.findOne({ email });
     if (!admin) {
-      return res.status(401).json({ message: "Account is not Found" });
+      return res.status(401).json({ message: "Account not found" });
     }
 
-    // 2️⃣ Check active
+    /* ===============================
+       2️⃣ CHECK ACTIVE
+    =============================== */
     if (!admin.isActive) {
       return res.status(403).json({ message: "Account is disabled" });
     }
 
-    // 3️⃣ Verify password
-    const match = await bcrypt.compare(password, admin.password);
-    if (!match) {
-      return res.status(401).json({ message: "Invalid Password" });
+    /* ===============================
+       3️⃣ VERIFY PASSWORD
+    =============================== */
+    const isMatch = await bcrypt.compare(password, admin.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid password" });
     }
 
-    /* ================================
-       🔑 RESOLVE ROLE + PERMISSIONS
-    ================================= */
-    let roleName = "";
+    /* ===============================
+       4️⃣ RESOLVE ROLE + PERMISSIONS
+    =============================== */
+    let roleName = "admin";
     let resolvedPermissions = [];
 
     if (admin.roleId) {
@@ -43,7 +50,7 @@ router.post("/login", async (req, res) => {
       if (roleDoc) {
         roleName = roleDoc.name;
 
-        if (roleDoc.permissions?.length) {
+        if (Array.isArray(roleDoc.permissions)) {
           resolvedPermissions.push(...roleDoc.permissions);
         }
       }
@@ -52,29 +59,54 @@ router.post("/login", async (req, res) => {
     // 🔥 SUPERADMIN → ALL PERMISSIONS
     if (roleName === "superadmin") {
       const allPermissions = await Permission.find().select("key");
-      resolvedPermissions = allPermissions.map(p => p.key);
+      resolvedPermissions = allPermissions.map((p) => p.key);
     }
 
     // 🔁 User-specific overrides
-    if (admin.permissions?.length) {
+    if (Array.isArray(admin.permissions)) {
       resolvedPermissions.push(...admin.permissions);
     }
 
-    // 🧹 Deduplicate
+    // 🧹 Remove duplicates
     resolvedPermissions = [...new Set(resolvedPermissions)];
 
-    /* ================================
-       🔑 TOKENS
-    ================================= */
+    /* ===============================
+       5️⃣ CREATE TOKENS
+    =============================== */
+
+    // 🔑 ACCESS TOKEN (short-lived)
     const accessToken = jwt.sign(
-      { id: admin._id },
+      {
+        id: admin._id,
+        role: roleName,
+      },
       process.env.JWT_SECRET,
       { expiresIn: "15m" }
     );
 
-    /* ================================
-       ✅ RESPONSE
-    ================================= */
+    // 🔁 REFRESH TOKEN (long-lived)
+    const refreshToken = jwt.sign(
+      {
+        id: admin._id,
+        role: roleName,
+      },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    /* ===============================
+       6️⃣ SET REFRESH COOKIE (CRITICAL)
+    =============================== */
+    res.cookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      secure: true,      // ✅ REQUIRED for Vercel / HTTPS
+      sameSite: "none",  // ✅ REQUIRED for cross-domain
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    /* ===============================
+       7️⃣ RESPONSE
+    =============================== */
     res.json({
       success: true,
       accessToken,
@@ -82,8 +114,8 @@ router.post("/login", async (req, res) => {
         id: admin._id,
         name: admin.name,
         email: admin.email,
-        role: roleName,                 // ✅ STRING
-        permissions: resolvedPermissions // ✅ ARRAY
+        role: roleName,
+        permissions: resolvedPermissions,
       },
     });
   } catch (err) {
