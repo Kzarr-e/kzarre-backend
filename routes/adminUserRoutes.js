@@ -10,8 +10,6 @@ const { sendEmail } = require("../utils/sendEmail");
 const router = express.Router();
 
 router.post("/create-user",
-  auth,
-  authorizeRoles("superadmin"),
   async (req, res) => {
     try {
       const { firstName, lastName, email, roleId } = req.body;
@@ -212,13 +210,8 @@ router.post("/login", async (req, res) => {
   }
 });
 
-
-
-
 router.delete(
   "/roles/:id",
-  auth,
-  authorizeRoles("superadmin"),
   async (req, res) => {
     try {
       const role = await Role.findById(req.params.id);
@@ -247,7 +240,6 @@ router.delete(
   }
 );
 
-
 router.post("/refresh", async (req, res) => {
   try {
     const oldToken = req.cookies?.refresh_token;
@@ -274,8 +266,6 @@ router.post("/refresh", async (req, res) => {
 });
 
 router.get("/permissions",
-  auth,
-  authorizeRoles("superadmin"),
   async (req, res) => {
     const permissions = await Permission.find().sort("key");
     res.json({ permissions });
@@ -283,8 +273,7 @@ router.get("/permissions",
 );
 
 router.get("/roles",
-  auth,
-  authorizeRoles("superadmin"),
+ 
   async (req, res) => {
     const roles = await Role.find();
     res.json({ roles });
@@ -292,8 +281,7 @@ router.get("/roles",
 );
 
 router.post("/roles",
-  auth,
-  authorizeRoles("superadmin"),
+ 
   async (req, res) => {
     const { name, permissions } = req.body;
 
@@ -308,8 +296,7 @@ router.post("/roles",
 
 router.get(
   "/users",
-  auth,
-  authorizeRoles("superadmin"),
+ 
   async (req, res) => {
     const admins = await Admin.find()
       .select("-password")
@@ -321,8 +308,7 @@ router.get(
 
 
 router.put("/update-permissions/:id",
-  auth,
-  authorizeRoles("superadmin"),
+
   async (req, res) => {
     const admin = await Admin.findByIdAndUpdate(
       req.params.id,
@@ -335,8 +321,7 @@ router.put("/update-permissions/:id",
 );
 
 router.put("/toggle-active/:id",
-  auth,
-  authorizeRoles("superadmin"),
+
   async (req, res) => {
     const admin = await Admin.findById(req.params.id);
     admin.isActive = !admin.isActive;

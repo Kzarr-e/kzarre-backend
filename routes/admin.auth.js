@@ -4,12 +4,24 @@ const bcrypt = require("bcryptjs");
 
 const Admin = require("../models/Admin");
 const Role = require("../models/Role");
-const Permission = require("../models/Permission");
 
 const router = express.Router();
 
+const isProd = process.env.NODE_ENV === "production";
+
+/* ===============================
+   COOKIE OPTIONS (LOCAL + PROD)
+=============================== */
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: isProd,                 // ❗ false on localhost
+  sameSite: isProd ? "none" : "lax",
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
+
 /* =====================================================
-   ADMIN LOGIN
+   ADMIN LOGIN (ROLE-AGNOSTIC, PERMISSION-BASED)
 ===================================================== */
 router.post("/login", async (req, res) => {
   try {
@@ -39,70 +51,43 @@ router.post("/login", async (req, res) => {
     }
 
     /* ===============================
-       4️⃣ RESOLVE ROLE + PERMISSIONS
+       4️⃣ RESOLVE PERMISSIONS (RBAC)
     =============================== */
-    let roleName = "admin";
-    let resolvedPermissions = [];
+    let rolePermissions = [];
 
     if (admin.roleId) {
       const roleDoc = await Role.findById(admin.roleId);
-
-      if (roleDoc) {
-        roleName = roleDoc.name;
-
-        if (Array.isArray(roleDoc.permissions)) {
-          resolvedPermissions.push(...roleDoc.permissions);
-        }
+      if (roleDoc?.permissions?.length) {
+        rolePermissions = roleDoc.permissions;
       }
     }
 
-    // 🔥 SUPERADMIN → ALL PERMISSIONS
-    if (roleName === "superadmin") {
-      const allPermissions = await Permission.find().select("key");
-      resolvedPermissions = allPermissions.map((p) => p.key);
-    }
-
-    // 🔁 User-specific overrides
-    if (Array.isArray(admin.permissions)) {
-      resolvedPermissions.push(...admin.permissions);
-    }
-
-    // 🧹 Remove duplicates
-    resolvedPermissions = [...new Set(resolvedPermissions)];
+    const resolvedPermissions = [
+      ...new Set([
+        ...rolePermissions,
+        ...(admin.permissions || []),
+      ]),
+    ];
 
     /* ===============================
-       5️⃣ CREATE TOKENS
+       5️⃣ CREATE TOKENS (IDENTITY ONLY)
     =============================== */
-
-    // 🔑 ACCESS TOKEN (short-lived)
     const accessToken = jwt.sign(
-      {
-        id: admin._id,
-        role: roleName,
-      },
+      { id: admin._id },
       process.env.JWT_SECRET,
       { expiresIn: "15m" }
     );
 
-    // 🔁 REFRESH TOKEN (long-lived)
     const refreshToken = jwt.sign(
-      {
-        id: admin._id,
-        role: roleName,
-      },
+      { id: admin._id },
       process.env.REFRESH_TOKEN_SECRET,
       { expiresIn: "7d" }
     );
 
     /* ===============================
-       6️⃣ SET REFRESH COOKIE (CRITICAL)
+       6️⃣ SET REFRESH COOKIE
     =============================== */
-    res.cookie("refresh_token", refreshToken, {
-      httpOnly: true,
-      secure: true,      // ✅ REQUIRED for Vercel / HTTPS
-      sameSite: "none",  // ✅ REQUIRED for cross-domain
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie("refresh_token", refreshToken, COOKIE_OPTIONS);
 
     /* ===============================
        7️⃣ RESPONSE
@@ -114,7 +99,6 @@ router.post("/login", async (req, res) => {
         id: admin._id,
         name: admin.name,
         email: admin.email,
-        role: roleName,
         permissions: resolvedPermissions,
       },
     });

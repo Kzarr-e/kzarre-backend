@@ -1,66 +1,49 @@
 const jwt = require("jsonwebtoken");
 const Admin = require("../models/Admin");
-const SuperAdmin = require("../models/SuperAdmin");
+const Role = require("../models/Role");
 
-const auth = (roles = []) => {
-  if (typeof roles === "string") roles = [roles];
+module.exports = async function accessAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization;
 
-  return async (req, res, next) => {
-    try {
-      let token = null;
-
-      // 🔥 USE REFRESH TOKEN
-      if (req.cookies?.refresh_token) {
-        token = req.cookies.refresh_token;
-      }
-
-      if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-        token = req.headers.authorization.split(" ")[1];
-      }
-
-      if (!token) {
-        return res.status(401).json({ message: "No token provided" });
-      }
-
-      // ✅ VERIFY WITH REFRESH SECRET
-      const decoded = jwt.verify(
-        token,
-        process.env.REFRESH_TOKEN_SECRET
-      );
-
-      const { id, role } = decoded;
-
-      if (!id || !role) {
-        return res.status(401).json({ message: "Invalid token payload" });
-      }
-
-      let user;
-
-      if (role === "superadmin") {
-        user = await SuperAdmin.findById(id);
-        if (user?.currentSession?.token !== token) {
-          return res.status(401).json({ message: "Session revoked" });
-        }
-      } else {
-        user = await Admin.findById(id);
-      }
-
-      if (!user || !user.isActive) {
-        return res.status(401).json({ message: "Account disabled" });
-      }
-
-      req.user = {
-        id: user._id,
-        type: role,
-        role,
-      };
-
-      next();
-    } catch (err) {
-      console.error("AUTH ERROR:", err.message);
-      res.status(401).json({ message: "Invalid refresh token" });
+    if (!header || !header.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
-  };
-};
 
-module.exports = { auth };
+    const token = header.split(" ")[1];
+
+    // ✅ VERIFY ACCESS TOKEN
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    const admin = await Admin.findById(payload.id);
+    if (!admin || !admin.isActive) {
+      return res.status(401).json({ message: "Account disabled" });
+    }
+
+    // 🔑 Resolve permissions dynamically
+    let rolePermissions = [];
+    if (admin.roleId) {
+      const role = await Role.findById(admin.roleId);
+      if (role?.permissions) rolePermissions = role.permissions;
+    }
+
+    const permissions = [
+      ...new Set([
+        ...rolePermissions,
+        ...(admin.permissions || []),
+      ]),
+    ];
+
+    req.user = {
+      id: admin._id,
+      name: admin.name,
+      email: admin.email,
+      permissions,
+    };
+
+    next();
+  } catch (err) {
+    console.error("ACCESS AUTH ERROR:", err.message);
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
