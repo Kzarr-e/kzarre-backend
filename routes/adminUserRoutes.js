@@ -6,7 +6,8 @@ const Role = require("../models/Role");
 const Permission = require("../models/Permission");
 const { auth, authorizeRoles } = require("../middlewares/roleAuth");
 const { sendEmail } = require("../utils/sendEmail");
-
+const accessAuth = require("../middlewares/accessAuth");
+const requirePermission = require("../middlewares/requirePermission");
 const router = express.Router();
 
 router.post("/create-user",
@@ -296,15 +297,16 @@ router.post("/roles",
 
 router.get(
   "/users",
- 
+  accessAuth,
+  requirePermission("manage_users"),
   async (req, res) => {
-    const admins = await Admin.find()
-      .select("-password")
-      .populate("roleId", "name permissions");
-
-    res.json(admins);
+    const users = await Admin.find().select("-password");
+    res.json(users);
   }
 );
+
+
+
 
 
 router.put("/update-permissions/:id",
