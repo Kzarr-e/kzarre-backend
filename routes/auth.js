@@ -22,16 +22,61 @@ const COOKIE_OPTIONS = {
 };
 
 // ================= VERIFY TOKEN =================
+// router.get("/verify", async (req, res) => {
+//   try {
+//     console.log("Backend Verify: Cookies received:", Object.keys(req.cookies || {}));
+//     console.log("Backend Verify: auth_token present:", !!req.cookies?.auth_token);
+
+//     const token = req.cookies?.auth_token;
+//     if (!token) {
+//       console.log("Backend Verify: No auth_token in cookies");
+//       return res.status(401).json({ message: "No token provided" });
+//     }
+
+//     const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+//     const admin = await Admin.findById(payload.id)
+//       .populate("roleId", "name permissions")
+//       .select("-password");
+
+//     if (!admin || !admin.isActive) {
+//       return res.status(401).json({ message: "User not found or inactive" });
+//     }
+
+//     // Check if user is superadmin
+//     const roleName = admin.roleId?.name || admin.role || "Admin";
+//     const isSuperAdmin = roleName === "superadmin";
+
+//     res.json({
+//       user: {
+//         _id: admin._id,
+//         name: admin.name || admin.email,
+//         email: admin.email,
+//         role: roleName,
+//         isSuperAdmin: isSuperAdmin,
+//         permissions: isSuperAdmin ? ["*"] : [
+//           ...new Set([
+//             ...(admin.roleId?.permissions || []),
+//             ...(admin.permissions || []),
+//           ]),
+//         ],
+//       },
+//     });
+//   } catch (err) {
+//     console.error("VERIFY ERROR:", err.message);
+//     res.status(401).json({ message: "Invalid token" });
+//   }
+// });
+
 router.get("/verify", async (req, res) => {
   try {
-    console.log("Backend Verify: Cookies received:", Object.keys(req.cookies || {}));
-    console.log("Backend Verify: auth_token present:", !!req.cookies?.auth_token);
+    const auth = req.headers.authorization;
 
-    const token = req.cookies?.auth_token;
-    if (!token) {
-      console.log("Backend Verify: No auth_token in cookies");
+    if (!auth || !auth.startsWith("Bearer ")) {
       return res.status(401).json({ message: "No token provided" });
     }
+
+    const token = auth.split(" ")[1];
 
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -43,7 +88,6 @@ router.get("/verify", async (req, res) => {
       return res.status(401).json({ message: "User not found or inactive" });
     }
 
-    // Check if user is superadmin
     const roleName = admin.roleId?.name || admin.role || "Admin";
     const isSuperAdmin = roleName === "superadmin";
 
@@ -54,12 +98,14 @@ router.get("/verify", async (req, res) => {
         email: admin.email,
         role: roleName,
         isSuperAdmin: isSuperAdmin,
-        permissions: isSuperAdmin ? ["*"] : [
-          ...new Set([
-            ...(admin.roleId?.permissions || []),
-            ...(admin.permissions || []),
-          ]),
-        ],
+        permissions: isSuperAdmin
+          ? ["*"]
+          : [
+              ...new Set([
+                ...(admin.roleId?.permissions || []),
+                ...(admin.permissions || []),
+              ]),
+            ],
       },
     });
   } catch (err) {
@@ -67,6 +113,7 @@ router.get("/verify", async (req, res) => {
     res.status(401).json({ message: "Invalid token" });
   }
 });
+
 
 // ================= REFRESH TOKEN =================
 router.post("/refresh", async (req, res) => {
