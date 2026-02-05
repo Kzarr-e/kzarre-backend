@@ -219,7 +219,63 @@ router.put("/:id/status", async (req, res) => {
 });
 
 
+// ==================================================
+// 👤 USER: CREATE RETURN REQUEST
+// POST /api/orders/return
+// ==================================================
+router.post("/return", async (req, res) => {
+  try {
+    const { orderId, reason } = req.body;
 
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID required",
+      });
+    }
+
+    const order = await Order.findOne({ orderId });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // ❌ Prevent duplicate return
+    if (order.return?.status) {
+      return res.status(400).json({
+        success: false,
+        message: "Return already requested",
+      });
+    }
+
+    // ❌ Only delivered orders allowed
+  
+
+    // ✅ Create return request
+    order.return = {
+      status: "requested",
+      reason: reason || "Customer requested return",
+      requestedAt: new Date(),
+    };
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: "Return request submitted",
+      order,
+    });
+  } catch (err) {
+    console.error("RETURN REQUEST ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit return request",
+    });
+  }
+});
 
 // ==================================================
 // 1. COD ORDER

@@ -342,6 +342,71 @@ router.post("/refund", async (req, res) => {
   }
 });
 
+router.post("/return", async (req, res) => {
+  try {
+    const { orderId, reason } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID required",
+      });
+    }
+
+    const order = await Order.findOne({ orderId });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // ❌ Prevent duplicate return
+    if (order.return?.status) {
+      return res.status(400).json({
+        success: false,
+        message: "Return already requested",
+      });
+    }
+
+    // ❌ Only delivered orders can be returned
+    if (order.status !== "delivered") {
+      return res.status(400).json({
+        success: false,
+        message: "Return allowed only after delivery",
+      });
+    }
+
+    // ✅ Create return request
+    order.return = {
+      status: "requested",
+      reason: reason || "Customer requested return",
+      requestedAt: new Date(),
+    };
+
+    // Optional: track history
+    order.shipment?.history?.push({
+      status: "return_requested",
+      note: "Customer initiated return",
+    });
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: "Return request submitted successfully",
+      order,
+    });
+  } catch (err) {
+    console.error("RETURN REQUEST ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit return request",
+    });
+  }
+});
+
+
 router.post("/create", auth(), async (req, res) => {
   try {
     const userId = req.user._id;

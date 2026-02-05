@@ -159,9 +159,6 @@ router.get("/customers", async (req, res) => {
   }
 });
 
-
-
-
 router.post("/notes/create", async (req, res) => {
   try {
     const { customerId, message } = req.body;
@@ -406,5 +403,21 @@ router.post("/promises/update-status", async (req, res) => {
     res.status(500).json({ message: "Failed to update status" });
   }
 });
+
+
+router.get("/returns", async (req, res) => {
+  try {
+    const orders = await Order.find({
+      "return.status": { $exists: true },
+    })
+      .sort({ "return.requestedAt": -1 })
+      .populate("userId", "name email");
+
+    res.json({ success: true, returns: orders });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+
 
 module.exports = router;

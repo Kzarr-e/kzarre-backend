@@ -91,6 +91,30 @@ shipment: {
   deliveredAt: Date,
 },
 
+return: {
+  status: {
+    type: String,
+    enum: [
+      "requested",     // customer clicked return
+      "approved",      // admin approved
+      "pickup_scheduled",
+      "picked",
+      "qc_passed",
+      "qc_failed",
+      "refunded",
+      "rejected",
+    ],
+  },
+
+  reason: { type: String },
+
+  requestedAt: Date,
+  approvedAt: Date,
+  pickedAt: Date,
+  qcAt: Date,
+  refundedAt: Date,
+},
+
 
   createdAt: { type: Date, default: Date.now },
 });

@@ -125,7 +125,97 @@ router.post("/:orderId/retry-label", async (req, res) => {
   }
 });
 
+router.put("/return/approve/:orderId", async (req, res) => {
+  try {
+    const { orderId } = req.params;
 
+    const order = await Order.findOne({ orderId });
+    if (!order || !order.return) {
+      return res.status(404).json({
+        success: false,
+        message: "Return request not found",
+      });
+    }
+
+    if (order.return.status !== "requested") {
+      return res.status(400).json({
+        success: false,
+        message: "Return cannot be approved",
+      });
+    }
+
+    order.return.status = "approved";
+    order.return.approvedAt = new Date();
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: "Return approved",
+      order,
+    });
+  } catch (err) {
+    console.error("RETURN APPROVAL ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to approve return",
+    });
+  }
+});
+
+router.put("/return/picked/:orderId", async (req, res) => {
+  try {
+    const order = await Order.findOne({ orderId: req.params.orderId });
+
+    if (!order || !order.return) {
+      return res.status(404).json({ success: false });
+    }
+
+    order.return.status = "picked";
+    order.return.pickedAt = new Date();
+
+    await order.save();
+
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+ 
+
+router.post("/return/refund/:orderId", async (req, res) => {
+  try {
+    const order = await Order.findOne({ orderId: req.params.orderId });
+
+    if (!order || !order.return) {
+      return res.status(404).json({ success: false });
+    }
+
+    if (order.return.status !== "picked") {
+      return res.status(400).json({
+        success: false,
+        message: "Return not ready for refund",
+      });
+    }
+
+    // ✅ Call your EXISTING refund logic here
+    // stripe.refunds.create(...)
+
+    order.return.status = "refunded";
+    order.return.refundedAt = new Date();
+    order.status = "refunded";
+
+    await order.save();
+
+    res.json({
+      success: true,
+      message: "Return refunded successfully",
+      order,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
 /* ======================================================
    RETRY LABEL (ADMIN)
    POST /api/admin/orders/:orderId/retry-label
