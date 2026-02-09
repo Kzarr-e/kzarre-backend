@@ -20,6 +20,7 @@ const generateToken = (user) =>
 // Helper: generate 6-digit OTP
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+
 // ===== REGISTER =====
 exports.register = async (req, res, next) => {
   try {

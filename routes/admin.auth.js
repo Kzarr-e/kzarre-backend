@@ -6,21 +6,16 @@ const Role = require("../models/Role");
 
 const router = express.Router();
 
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
+/* ================= HELPERS ================= */
+const generateAccessToken = (admin) =>
+  jwt.sign({ id: admin._id }, process.env.JWT_SECRET, {
+    expiresIn: "15m",
+  });
 
-const AUTH_TOKEN_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  path: "/",
-  maxAge: 15 * 60 * 1000, // 15 minutes (access token expiry)
-};
+const generateRefreshToken = (admin) =>
+  jwt.sign({ id: admin._id }, process.env.REFRESH_TOKEN_SECRET, {
+    expiresIn: "7d",
+  });
 
 /* ================= LOGIN ================= */
 router.post("/login", async (req, res) => {
@@ -28,7 +23,9 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res
+        .status(400)
+        .json({ message: "Email and password are required" });
     }
 
     const admin = await Admin.findOne({ email });
@@ -41,7 +38,7 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Get permissions from role and admin
+    /* 🔐 RESOLVE PERMISSIONS */
     let rolePermissions = [];
     if (admin.roleId) {
       const role = await Role.findById(admin.roleId);
@@ -52,64 +49,69 @@ router.post("/login", async (req, res) => {
       ...new Set([...rolePermissions, ...(admin.permissions || [])]),
     ];
 
-    // Generate tokens
-    const accessToken = jwt.sign(
-      { id: admin._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "15m" }
-    );
+    /* 🔑 TOKENS */
+    const accessToken = generateAccessToken(admin);
+    const refreshToken = generateRefreshToken(admin);
 
-    const refreshToken = jwt.sign(
-      { id: admin._id },
-      process.env.REFRESH_TOKEN_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    // Update admin session
-    admin.currentSession = { token: refreshToken };
+    /* 🔒 SAVE SESSION */
+    admin.currentSession = {
+      token: refreshToken,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      loginAt: new Date(),
+    };
     await admin.save();
 
-    // Set cookies
-    console.log("Backend: Setting cookies");
-    res.cookie("refresh_token", refreshToken, COOKIE_OPTIONS);
-    res.cookie("auth_token", accessToken, AUTH_TOKEN_COOKIE_OPTIONS);
-    console.log("Backend: Cookies set, auth_token length:", accessToken.length);
-
-    // Return response matching frontend expectations
+    /* ✅ RESPONSE (NO COOKIES) */
     res.json({
+      success: true,
       accessToken,
+      refreshToken,
       admin: {
         _id: admin._id,
         name: admin.name || admin.email,
         email: admin.email,
-        role: admin.role || "Admin",
+        role: admin.role || "",
         permissions,
       },
     });
   } catch (error) {
-    console.error("Admin login error:", error);
+    console.error("ADMIN LOGIN ERROR:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
 /* ================= REFRESH ================= */
 router.post("/refresh", async (req, res) => {
-  const token = req.cookies?.refresh_token;
-  if (!token) return res.status(401).json({ message: "No refresh token" });
+  try {
+    const auth = req.headers.authorization;
 
-  const payload = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "No refresh token" });
+    }
 
-  const admin = await Admin.findById(payload.id);
-  if (!admin || admin.currentSession?.token !== token)
-    return res.status(401).json({ message: "Session invalid" });
+    const refreshToken = auth.split(" ")[1];
 
-  const newAccessToken = jwt.sign(
-    { id: admin._id },
-    process.env.JWT_SECRET,
-    { expiresIn: "15m" }
-  );
+    const payload = jwt.verify(
+      refreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    );
 
-  res.json({ accessToken: newAccessToken });
+    const admin = await Admin.findById(payload.id);
+    if (!admin || admin.currentSession?.token !== refreshToken) {
+      return res.status(401).json({ message: "Session invalid" });
+    }
+
+    const newAccessToken = generateAccessToken(admin);
+
+    res.json({
+      success: true,
+      accessToken: newAccessToken,
+    });
+  } catch (err) {
+    console.error("REFRESH ERROR:", err.message);
+    res.status(401).json({ message: "Invalid refresh token" });
+  }
 });
 
 module.exports = router;

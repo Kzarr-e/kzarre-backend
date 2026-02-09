@@ -230,24 +230,24 @@ router.post("/login", async (req, res) => {
     await admin.save();
 
     // 🔥 ACTIVITY LOG: LOGIN (GLOBAL ACTIVITY COLLECTION)
-const ipAddr =
-  req.headers["x-forwarded-for"]?.split(",")[0] ||
-  req.socket.remoteAddress;
+    const ipAddr =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress;
 
-await Activity.create({
-  userId: admin._id,
-  userName: admin.email,
-  role: roleName || "UNKNOWN",
+    await Activity.create({
+      userId: admin._id,
+      userName: admin.email,
+      role: roleName || "UNKNOWN",
 
-  action: "LOGIN",
+      action: "LOGIN",
 
-  meta: {
-    userAgent,
-  },
+      meta: {
+        userAgent,
+      },
 
-  ip: ipAddr,
-  timestamp: new Date(),
-});
+      ip: ipAddr,
+      timestamp: new Date(),
+    });
 
 
     /* ================================
@@ -289,7 +289,10 @@ await Activity.create({
   }
 });
 
-router.delete("/roles/:id",
+router.delete(
+  "/roles/:id",
+  accessAuth,
+  requirePermission("manage_users"),
   async (req, res) => {
     try {
       const role = await Role.findById(req.params.id);
@@ -297,7 +300,6 @@ router.delete("/roles/:id",
         return res.status(404).json({ message: "Role not found" });
       }
 
-      // ✅ CHECK BY roleId (NOT name)
       const usersUsingRole = await Admin.countDocuments({
         roleId: role._id,
       });
@@ -309,22 +311,33 @@ router.delete("/roles/:id",
       }
 
       await Role.findByIdAndDelete(role._id);
-      // 🔥 ACTIVITY LOG: DELETE ROLE
-const ip =
-  req.headers["x-forwarded-for"]?.split(",")[0] ||
-  req.socket.remoteAddress;
 
-await Activity.create({
-  userId: req.user?.id || null,
-  userName: req.user?.name || "UNKNOWN",
-  action: "DELETE_ROLE",
-  meta: {
-    roleId: role._id,
-    roleName: role.name,
-  },
-  ip,
-  timestamp: new Date(),
-});
+      // 🔐 Resolve actor safely
+      const actorId =
+        req.user?.id ||
+        req.user?._id ||
+        req.admin?._id;
+
+      if (!actorId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const ip =
+        req.headers["x-forwarded-for"]?.split(",")[0] ||
+        req.socket.remoteAddress;
+
+      await Activity.create({
+        userId: actorId,                  // ✅ ALWAYS VALID
+        userName: req.user?.name || "ADMIN",
+        role: req.user?.role || "admin",
+        action: "DELETE_ROLE",
+        meta: {
+          roleId: role._id,
+          roleName: role.name,
+        },
+        ip,
+        timestamp: new Date(),
+      });
 
       res.json({ message: "✅ Role deleted successfully" });
     } catch (err) {
@@ -333,6 +346,7 @@ await Activity.create({
     }
   }
 );
+
 // ======================================================
 // 🗑️ DELETE USER (HARD DELETE)
 // ======================================================
@@ -405,22 +419,22 @@ router.patch("/users/:id/status",
       if (!admin) {
         return res.status(404).json({ message: "User not found" });
       }
-       // 🔥 ACTIVITY LOG: USER STATUS CHANGE
-const ip =
-  req.headers["x-forwarded-for"]?.split(",")[0] ||
-  req.socket.remoteAddress;
+      // 🔥 ACTIVITY LOG: USER STATUS CHANGE
+      const ip =
+        req.headers["x-forwarded-for"]?.split(",")[0] ||
+        req.socket.remoteAddress;
 
-await Activity.create({
-  userId: req.user?.id || null,
-  userName: req.user?.name || "UNKNOWN",
-  action: isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
-  meta: {
-    targetUserId: admin._id,
-    targetUserEmail: admin.email,
-  },
-  ip,
-  timestamp: new Date(),
-});
+      await Activity.create({
+        userId: req.user?.id || null,
+        userName: req.user?.name || "UNKNOWN",
+        action: isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
+        meta: {
+          targetUserId: admin._id,
+          targetUserEmail: admin.email,
+        },
+        ip,
+        timestamp: new Date(),
+      });
 
       res.json({
         success: true,
@@ -456,17 +470,17 @@ router.post("/refresh", async (req, res) => {
     res.json({ success: true, accessToken: newAccessToken });
 
     // 🔥 ACTIVITY LOG: ADMIN TOKEN REFRESH
-const ip =
-  req.headers["x-forwarded-for"]?.split(",")[0] ||
-  req.socket.remoteAddress;
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress;
 
-await Activity.create({
-  userId: admin._id,
-  userName: admin.name,
-  action: "ADMIN_TOKEN_REFRESH",
-  ip,
-  timestamp: new Date(),
-});
+    await Activity.create({
+      userId: admin._id,
+      userName: admin.name,
+      action: "ADMIN_TOKEN_REFRESH",
+      ip,
+      timestamp: new Date(),
+    });
 
   } catch {
     res.status(401).json({ message: "Invalid refresh token" });
@@ -523,21 +537,21 @@ router.put("/update-permissions/:id",
     ).select("-password");
 
     // 🔥 ACTIVITY LOG: UPDATE PERMISSIONS
-const ip =
-  req.headers["x-forwarded-for"]?.split(",")[0] ||
-  req.socket.remoteAddress;
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket.remoteAddress;
 
-await Activity.create({
-  userId: req.user?.id || null,
-  userName: req.user?.name || "UNKNOWN",
-  action: "UPDATE_PERMISSIONS",
-  meta: {
-    targetUserId: admin._id,
-    newPermissions: req.body.permissions,
-  },
-  ip,
-  timestamp: new Date(),
-});
+    await Activity.create({
+      userId: req.user?.id || null,
+      userName: req.user?.name || "UNKNOWN",
+      action: "UPDATE_PERMISSIONS",
+      meta: {
+        targetUserId: admin._id,
+        newPermissions: req.body.permissions,
+      },
+      ip,
+      timestamp: new Date(),
+    });
 
 
     res.json({ message: "✅ Permissions updated", admin });
