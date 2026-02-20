@@ -49,7 +49,7 @@ router.post("/create-user",
         "Your Admin Account Credentials",
         `
     <div style="font-family: Arial, sans-serif">
-      <h2>Welcome to KZARRÈ Admin Panel</h2>
+      <h2>Welcome to KZARRĒ Admin Panel</h2>
       <p>Your account has been created.</p>
 
       <p><strong>Email:</strong> ${email}</p>

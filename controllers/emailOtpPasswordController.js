@@ -26,7 +26,7 @@ exports.requestEmailOtp = async (req, res) => {
     const html = `
       <div style="font-family: Arial, sans-serif; background: #000; padding: 40px;">
         <div style="max-width: 420px; margin: auto; background: #fff; padding: 30px; border-radius: 12px;">
-          <h2 style="text-align: center; letter-spacing: 1px;">KZARRÈ</h2>
+          <h2 style="text-align: center; letter-spacing: 1px;">KZARRĒ</h2>
           <p>Your password reset OTP is:</p>
           <h1 style="text-align:center; letter-spacing: 6px;">${otp}</h1>
           <p>This OTP is valid for <strong>5 minutes</strong>.</p>
@@ -37,7 +37,7 @@ exports.requestEmailOtp = async (req, res) => {
 
     await sendEmail(
       user.email,
-      "Your KZARRÈ Password Reset OTP",
+      "Your KZARRĒ Password Reset OTP",
       html
     );
 

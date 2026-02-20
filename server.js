@@ -124,6 +124,8 @@ app.use((req, res, next) => {
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   process.env.ADMIN_URL,
+  "http://localhost:3000",
+  "https://d2tbl6kz9ez1o.cloudfront.net"
 ];
 
 app.use(

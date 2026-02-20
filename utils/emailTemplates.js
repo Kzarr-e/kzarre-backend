@@ -1,13 +1,13 @@
 // ========================================================
-// 💎 KZARRÈ — Luxury Email Templates Suite
+// 💎 KZARRĒ — Luxury Email Templates Suite
 // ========================================================
-// Author: Abhijeet (KZARRÈ Project)
+// Author: Abhijeet (KZARRĒ Project)
 // Description: Unified set of HTML templates for OTP, Welcome,
 // Verified, and Order Confirmation emails.
 // ========================================================
 
 const brand = {
-  name: "KZARRÈ",
+  name: "KZARRĒ",
   url: "https://kzarre.com",
   colorGold: "#d9c169",
   colorDark: "#0C2B19",
@@ -148,7 +148,7 @@ exports.otpEmailTemplate = (name, otp) =>
 // ========================================================
 exports.welcomeEmailTemplate = (name) =>
   baseLayout(
-    "Welcome to KZARRÈ",
+    "Welcome to KZARRĒ",
     `
     <h2>Welcome aboard, ${name || "Valued Guest"}!</h2>
     <p>We’re thrilled to have you join <strong>${brand.name}</strong> — where craftsmanship meets contemporary design.</p>
@@ -166,10 +166,10 @@ exports.verifiedEmailTemplate = (name) =>
   baseLayout(
     "Email Verified",
     `
-    <h2>Congratulations, ${name || "KZARRÈ Member"}!</h2>
+    <h2>Congratulations, ${name || "KZARRĒ Member"}!</h2>
     <p>Your email has been successfully verified. You’re now part of the <strong>${brand.name}</strong> family.</p>
     <p>Enjoy early access to collections, exclusive rewards, and a truly personalized experience.</p>
-    <a href="${brand.url}" class="btn">Visit KZARRÈ</a>
+    <a href="${brand.url}" class="btn">Visit KZARRĒ</a>
     <div class="divider"></div>
     <p>We’re honored to have you with us.</p>
   `

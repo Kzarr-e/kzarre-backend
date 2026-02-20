@@ -31,7 +31,7 @@ exports.sendAdminEmail = async (to, subject, html) => {
     }
 
     const mailOptions = {
-      from: `"KZARRÈ Admin" <${process.env.ADMIN_EMAIL_USER}>`,
+      from: `"KZARRĒ Admin" <${process.env.ADMIN_EMAIL_USER}>`,
       to,
       subject,
       html,

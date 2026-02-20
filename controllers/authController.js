@@ -45,7 +45,7 @@ exports.register = async (req, res, next) => {
     // Send OTP email
     await sendEmail(
       customer.email,
-      'Verify your KZARRÈ Account',
+      'Verify your KZARRĒ Account',
       otpEmailTemplate(customer.name, otp)
     );
 
@@ -82,13 +82,13 @@ exports.verifyOtp = async (req, res, next) => {
     // Send “You’re Verified” and Welcome emails
     await sendEmail(
       customer.email,
-      'Your KZARRÈ Account is Verified!',
+      'Your KZARRĒ Account is Verified!',
       verifiedEmailTemplate(customer.name)
     );
 
     await sendEmail(
       customer.email,
-      'Welcome to KZARRÈ — Experience Luxury Redefined',
+      'Welcome to KZARRĒ — Experience Luxury Redefined',
       welcomeEmailTemplate(customer.name)
     );
 
@@ -136,7 +136,7 @@ exports.login = async (req, res, next) => {
       // Send OTP again
       await sendEmail(
         user.email,
-        "Verify your KZARRÈ account",
+        "Verify your KZARRĒ account",
         otpEmailTemplate(user.name, otp)
       );
 
@@ -191,7 +191,7 @@ exports.forgotPassword = async (req, res, next) => {
 
     await sendEmail(
       customer.email,
-      'Reset Your KZARRÈ Password',
+      'Reset Your KZARRĒ Password',
       passwordResetTemplate(customer.name, resetLink)
     );
 

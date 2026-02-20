@@ -31,7 +31,7 @@ module.exports.orderConfirmationTemplate = (orderId, items, address, totalAmount
 
       <p style="margin-top:28px; font-size:15px; color:#777;">We will notify you when your order is shipped.</p>
 
-      <p style="text-align:center; margin-top:25px; color:#999;">© KZARRÈ</p>
+      <p style="text-align:center; margin-top:25px; color:#999;">© KZARRĒ</p>
     </div>
   </div>
   `;
