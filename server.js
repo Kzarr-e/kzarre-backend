@@ -126,7 +126,8 @@ const allowedOrigins = [
   process.env.ADMIN_URL,
   "http://localhost:3000",
   "http://localhost:3001",
-  "https://adminkzarre.com"
+  "https://adminkzarre.com",
+  "https://adminkzarre.com",
 ];
 
 app.use(
