@@ -26,6 +26,7 @@ const CMSContentSchema = new mongoose.Schema(
         "men-grid",
         "women-4grid",
         "men-4grid",
+        
       ],
       default: "",
     },
@@ -98,11 +99,19 @@ aboutData: {
 
     author: { type: String, default: "Admin" },
 
-    status: {
-      type: String,
-      enum: ["Pending Review", "Approved", "Rejected", "Draft", "Scheduled"],
-      default: "Pending Review",
-    },
+   status: {
+  type: String,
+  enum: [
+    "Uploading",        // 🔥 NEW
+    "Processing",       // 🔥 NEW
+    "Pending Review",
+    "Approved",
+    "Rejected",
+    "Scheduled",
+    "Failed"            // 🔥 Optional but recommended
+  ],
+  default: "Pending Review",
+},
 
     rejectionReason: String,
 
@@ -112,6 +121,11 @@ aboutData: {
         order: Number,
       },
     ],
+
+    uploadProgress: {
+  type: Number,
+  default: 0,
+},
 
     stories: Array,
   },

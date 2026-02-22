@@ -46,6 +46,52 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+// Upload raw video to S3 (no compression). Returns { fileUrl, key } for later background replace.
+const uploadRawVideoToS3 = async (buffer, originalname, displayTo = "") => {
+  const folder = "cms/videos";
+  const ext = path.extname(originalname) || ".mp4";
+  const fileName = `${crypto.randomBytes(8).toString("hex")}-${originalname}`;
+  const key = `${folder}/${fileName}`;
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: "video/mp4",
+      CacheControl: "public, max-age=31536000, immutable",
+    })
+  );
+  const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  console.log("✅ Raw video uploaded (background compression will follow):", fileUrl);
+  return { fileUrl, key };
+};
+
+// Run in background: compress video and overwrite S3 object. Does not block response.
+const processVideoInBackground = async (inputPath, key, cmsId) => {
+  const outputPath = path.join(os.tmpdir(), `${Date.now()}-compressed.mp4`);
+  compressVideo(inputPath, outputPath)
+    .then(() => {
+      const buffer = fs.readFileSync(outputPath);
+      return s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Key: key,
+          Body: buffer,
+          ContentType: "video/mp4",
+          CacheControl: "public, max-age=31536000, immutable",
+        })
+      );
+    })
+    .then(() => console.log("✅ Background video compression done:", key))
+    .catch((err) => console.error("❌ Background video compression failed:", err))
+    .finally(() => {
+      try {
+        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+      } catch (e) { }
+    });
+};
+
 const uploadToS3 = async (file, displayTo = "") => {
 
   try {
@@ -134,8 +180,19 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
     } = req.body;
 
 
+
     const displayToValue = displayTo || "";
 
+    const newContent = new CMSContent({
+  title,
+  description,
+  displayTo: displayToValue,
+  status: "Uploading",
+  uploadProgress: 0,
+  author: req.user.name,
+});
+
+await newContent.save();
     let cleanKeywords = keywords;
     try {
       const parsed = JSON.parse(keywords);
@@ -167,7 +224,7 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
     }
 
     // ============================================
-    // 1️⃣ Home Landing Video
+    // 1️⃣ Home Landing Video (quick 200 + background compress)
     // ============================================
     if (
       displayToValue === "home-landing-video" ||
@@ -179,7 +236,11 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
       if (!videoFile)
         return res.status(400).json({ error: "Video required for landing" });
 
-      heroVideoUrl = await uploadToS3(videoFile, displayToValue);
+      const tempDir = os.tmpdir();
+      const inputPath = path.join(tempDir, `${Date.now()}-${videoFile.originalname}`);
+      fs.writeFileSync(inputPath, videoFile.buffer);
+      const { fileUrl: rawUrl, key } = await uploadRawVideoToS3(videoFile.buffer, videoFile.originalname, displayToValue);
+      heroVideoUrl = rawUrl;
 
       media = {
         url: heroVideoUrl,
@@ -187,6 +248,10 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
         kind: "video",
         displayTo: displayToValue,
       };
+
+      setImmediate(() =>
+  processVideoInBackground(inputPath, key, newContent._id)
+);
     }
 
     // ============================================
@@ -328,9 +393,14 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
         return res.status(400).json({ error: "Invalid aboutData JSON" });
       }
 
-      // ---------- HERO VIDEO ----------
+      // ---------- HERO VIDEO (quick 200 + background compress) ----------
       if (videoFile) {
-        heroVideoUrl = await uploadToS3(videoFile, "about-page");
+        const tempDir = os.tmpdir();
+        const inputPath = path.join(tempDir, `${Date.now()}-${videoFile.originalname}`);
+        fs.writeFileSync(inputPath, videoFile.buffer);
+        const { fileUrl: rawUrl, key } = await uploadRawVideoToS3(videoFile.buffer, videoFile.originalname, "about-page");
+        heroVideoUrl = rawUrl;
+        setImmediate(() => processVideoInBackground(inputPath, key));
       }
 
       // ---------- GRID IMAGES ----------
@@ -414,7 +484,8 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
         displayTo: saved.displayTo,
       });
     }
-    res.json({ success: true, message: "Saved (Pending Review)", saved });
+    const savedObj = saved.toObject ? saved.toObject() : saved;
+    res.json({ success: true, message: "Saved (Pending Review)", ...savedObj });
     // 🔥 ACTIVITY LOG: CMS CREATE
     const ip =
       req.headers["x-forwarded-for"]?.split(",")[0] ||
@@ -448,6 +519,32 @@ router.get("/", async (req, res) => {
     res.status(200).json(cmsContent);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =============================
+// ✅ STATUS CHECK (for dashboard polling)
+// =============================
+router.get("/status/:id", async (req, res) => {
+  try {
+    const post = await CMSContent.findById(req.params.id);
+
+    if (!post) {
+      return res.json({
+        _id: req.params.id,
+        status: "Uploading",
+        progress: 0,
+      });
+    }
+
+    return res.json({
+      _id: post._id,
+      status: post.status,
+      progress: post.uploadProgress,
+    });
+
+  } catch (err) {
+    return res.status(500).json({ error: "Status check failed" });
   }
 });
 
@@ -887,19 +984,23 @@ router.put("/update/:id", accessAuth, upload.any(), async (req, res) => {
     const videoFile = files.find(f => f.mimetype.startsWith("video/"));
 
     /* ===============================
-       VIDEO UPDATE
+       VIDEO UPDATE (quick 200 + background compress)
     =============================== */
     if (videoFile) {
-      const videoUrl = await uploadToS3(videoFile, existing.displayTo);
+      const tempDir = os.tmpdir();
+      const inputPath = path.join(tempDir, `${Date.now()}-${videoFile.originalname}`);
+      fs.writeFileSync(inputPath, videoFile.buffer);
+      const { fileUrl: rawUrl, key } = await uploadRawVideoToS3(videoFile.buffer, videoFile.originalname, existing.displayTo);
 
       existing.media = {
-        url: videoUrl,
+        url: rawUrl,
         name: videoFile.originalname,
         kind: "video",
         displayTo: existing.displayTo,
       };
 
-      existing.heroVideoUrl = videoUrl;
+      existing.heroVideoUrl = rawUrl;
+      setImmediate(() => processVideoInBackground(inputPath, key));
     }
 
     /* ===============================
@@ -925,70 +1026,70 @@ router.put("/update/:id", accessAuth, upload.any(), async (req, res) => {
     /* ===============================
      GRID / CAROUSEL UPDATE (FIXED)
   =============================== */
-  /* ===============================
-   GRID / CAROUSEL UPDATE (FINAL CLEAN)
-=============================== */
+    /* ===============================
+     GRID / CAROUSEL UPDATE (FINAL CLEAN)
+  =============================== */
 
-if (
-  ["women-4grid", "men-4grid", "women-grid", "men-grid", "home-banner-carousel"]
-    .includes(existing.displayTo)
-) {
-  const titles = JSON.parse(req.body.titles || "[]");
-  const descriptions = JSON.parse(req.body.descriptions || "[]");
-  const metaTags = JSON.parse(req.body.metaTags || "[]");
-  const metaDescriptions = JSON.parse(req.body.metaDescriptions || "[]");
-  const keywords = JSON.parse(req.body.imageKeywords || "[]");
+    if (
+      ["women-4grid", "men-4grid", "women-grid", "men-grid", "home-banner-carousel"]
+        .includes(existing.displayTo)
+    ) {
+      const titles = JSON.parse(req.body.titles || "[]");
+      const descriptions = JSON.parse(req.body.descriptions || "[]");
+      const metaTags = JSON.parse(req.body.metaTags || "[]");
+      const metaDescriptions = JSON.parse(req.body.metaDescriptions || "[]");
+      const keywords = JSON.parse(req.body.imageKeywords || "[]");
 
-  const existingFiles = Array.isArray(req.body.existingFiles)
-    ? req.body.existingFiles
-    : req.body.existingFiles
-    ? [req.body.existingFiles]
-    : [];
+      const existingFiles = Array.isArray(req.body.existingFiles)
+        ? req.body.existingFiles
+        : req.body.existingFiles
+          ? [req.body.existingFiles]
+          : [];
 
-  const orders = Array.isArray(req.body.orders)
-    ? req.body.orders
-    : req.body.orders
-    ? [req.body.orders]
-    : [];
+      const orders = Array.isArray(req.body.orders)
+        ? req.body.orders
+        : req.body.orders
+          ? [req.body.orders]
+          : [];
 
-  let newMediaGroup = [];
-  let filePointer = 0;
+      let newMediaGroup = [];
+      let filePointer = 0;
 
-  for (let i = 0; i < orders.length; i++) {
-    let imageUrl = null;
+      for (let i = 0; i < orders.length; i++) {
+        let imageUrl = null;
 
-    // Use existing image first
-    if (existingFiles[i]) {
-      imageUrl = existingFiles[i];
+        // Use existing image first
+        if (existingFiles[i]) {
+          imageUrl = existingFiles[i];
+        }
+
+        // Replace with new upload if exists
+        if (imageFiles[filePointer]) {
+          imageUrl = await uploadToS3(
+            imageFiles[filePointer],
+            existing.displayTo
+          );
+          filePointer++;
+        }
+
+        if (!imageUrl) continue;
+
+        newMediaGroup.push({
+          imageUrl,
+          title: titles[i] || "",
+          description: descriptions[i] || "",
+          metaTag: metaTags[i] || "",
+          metaDescription: metaDescriptions[i] || "",
+          keywords: keywords[i] || "",
+          order: Number(orders[i]) || i + 1,
+          style: existing.bannerStyle || {},
+        });
+      }
+
+      if (newMediaGroup.length > 0) {
+        existing.mediaGroup = newMediaGroup;
+      }
     }
-
-    // Replace with new upload if exists
-    if (imageFiles[filePointer]) {
-      imageUrl = await uploadToS3(
-        imageFiles[filePointer],
-        existing.displayTo
-      );
-      filePointer++;
-    }
-
-    if (!imageUrl) continue;
-
-    newMediaGroup.push({
-      imageUrl,
-      title: titles[i] || "",
-      description: descriptions[i] || "",
-      metaTag: metaTags[i] || "",
-      metaDescription: metaDescriptions[i] || "",
-      keywords: keywords[i] || "",
-      order: Number(orders[i]) || i + 1,
-      style: existing.bannerStyle || {},
-    });
-  }
-
-  if (newMediaGroup.length > 0) {
-    existing.mediaGroup = newMediaGroup;
-  }
-}
 
 
     // 🔔 CMS SCHEDULING NOTIFICATION
