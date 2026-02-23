@@ -27,7 +27,8 @@ const AdminSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
 
     currentSession: sessionSchema,
-
+resetPasswordToken: String,
+resetPasswordExpire: Date,
     activityLogs: [
       {
         action: String,
@@ -37,6 +38,8 @@ const AdminSchema = new mongoose.Schema(
       },
     ],
   },
+
+  
   { timestamps: true }
 );
 
