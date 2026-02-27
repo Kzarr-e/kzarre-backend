@@ -13,7 +13,8 @@ const Activity = require("../models/Activity");
 
 
 router.post("/create-user",
-
+  accessAuth,
+  requirePermission("create_user"),
   async (req, res) => {
     try {
       const { firstName, lastName, email, roleId } = req.body;
@@ -45,43 +46,96 @@ router.post("/create-user",
 
       // 5️⃣ Send email (NON-BLOCKING but awaited for safety)
       await sendEmail(
-        email,
-        "Your Admin Account Credentials",
-        `
-    <div style="font-family: Arial, sans-serif">
-      <h2>Welcome to KZARRĒ Admin Panel</h2>
-      <p>Your account has been created.</p>
-
-      <p><strong>Email:</strong> ${email}</p>
-      <p><strong>Password:</strong> ${plainPassword}</p>
-      <p><strong>Role:</strong> ${role.name}</p>
-
-      <p style="margin-top:12px">
-        ⚠️ Please login and change your password immediately.
-      </p>
-
-      <p>
-        Login URL:
-        <a href="${process.env.ADMIN_LOGIN_URL}">
-          ${process.env.ADMIN_LOGIN_URL}
-        </a>
-      </p>
-    </div>
+  email,
+  "Your Admin Panel Access Details",
   `
-      );
+  <div style="margin:0;padding:0;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+      <tr>
+        <td align="center">
+          <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+            
+            <!-- HEADER -->
+            <tr>
+              <td style="background:#6d28d9;padding:24px 30px;color:#ffffff;">
+                <h2 style="margin:0;font-size:20px;font-weight:600;">
+                  KZARRĒ Admin Portal
+                </h2>
+              </td>
+            </tr>
+
+            <!-- BODY -->
+            <tr>
+              <td style="padding:30px;">
+                <h3 style="margin-top:0;color:#111827;">
+                  Welcome to the Admin Panel
+                </h3>
+
+                <p style="color:#4b5563;font-size:14px;line-height:1.6;">
+                  Your administrator account has been successfully created. 
+                  Please find your login credentials below:
+                </p>
+
+                <!-- CREDENTIAL BOX -->
+                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px;margin:20px 0;">
+                  <p style="margin:6px 0;font-size:14px;">
+                    <strong>Email:</strong> ${email}
+                  </p>
+                  <p style="margin:6px 0;font-size:14px;">
+                    <strong>Password:</strong> ${plainPassword}
+                  </p>
+                  <p style="margin:6px 0;font-size:14px;">
+                    <strong>Assigned Role:</strong> ${role.name}
+                  </p>
+                </div>
+
+                <!-- CTA BUTTON -->
+                <div style="text-align:center;margin:30px 0;">
+                  <a href="www.adminkzarre.com" target="_blank" rel="noopener"}"
+                     style="background:#6d28d9;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-size:14px;font-weight:600;display:inline-block;">
+                    Login to Admin Panel
+                  </a>
+                </div>
+
+                <!-- SECURITY NOTICE -->
+                <p style="color:#dc2626;font-size:13px;margin-top:10px;">
+                  ⚠ For security reasons, please log in immediately and change your password.
+                </p>
+
+                <p style="color:#6b7280;font-size:12px;margin-top:20px;">
+                  If you did not expect this email, please contact your system administrator immediately.
+                </p>
+              </td>
+            </tr>
+
+            <!-- FOOTER -->
+            <tr>
+              <td style="background:#f3f4f6;padding:18px;text-align:center;font-size:12px;color:#6b7280;">
+                © ${new Date().getFullYear()} KZARRĒ. All rights reserved.
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+  `
+);
       // 🔥 ACTIVITY LOG: CREATE USER
       const ip =
         req.headers["x-forwarded-for"]?.split(",")[0] ||
         req.socket.remoteAddress;
 
       await Activity.create({
-        userId: req.user?.id || null,          // creator
-        userName: req.user?.name || "SYSTEM",
+        userId: req.user.id,
+        userName: req.user.name,
+        role: req.user.role || "admin",
         action: "CREATE_USER",
         meta: {
           createdUserId: admin._id,
           createdUserEmail: admin.email,
-          role: role.name,
+          assignedRole: role.name,
         },
         ip,
         timestamp: new Date(),
