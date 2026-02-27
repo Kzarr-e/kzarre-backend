@@ -46,9 +46,9 @@ router.post("/create-user",
 
       // 5️⃣ Send email (NON-BLOCKING but awaited for safety)
       await sendEmail(
-  email,
-  "Your Admin Panel Access Details",
-  `
+        email,
+        "Your Admin Panel Access Details",
+        `
   <div style="margin:0;padding:0;background-color:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
     <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
       <tr>
@@ -121,7 +121,7 @@ router.post("/create-user",
     </table>
   </div>
   `
-);
+      );
       // 🔥 ACTIVITY LOG: CREATE USER
       const ip =
         req.headers["x-forwarded-for"]?.split(",")[0] ||
