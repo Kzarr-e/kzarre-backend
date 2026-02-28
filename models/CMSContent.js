@@ -66,6 +66,7 @@ aboutData: {
         metaTag: String,
         metaDescription: String,
         keywords: String,
+        shareLink: { type: String, default: "" },
         order: Number,
       },
     ],

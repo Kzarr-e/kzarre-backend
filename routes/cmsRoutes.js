@@ -184,15 +184,15 @@ router.post("/save", accessAuth, upload.any(), async (req, res) => {
     const displayToValue = displayTo || "";
 
     const newContent = new CMSContent({
-  title,
-  description,
-  displayTo: displayToValue,
-  status: "Uploading",
-  uploadProgress: 0,
-  author: req.user.name,
-});
+      title,
+      description,
+      displayTo: displayToValue,
+      status: "Uploading",
+      uploadProgress: 0,
+      author: req.user.name,
+    });
 
-await newContent.save();
+    await newContent.save();
     let cleanKeywords = keywords;
     try {
       const parsed = JSON.parse(keywords);
@@ -250,8 +250,8 @@ await newContent.save();
       };
 
       setImmediate(() =>
-  processVideoInBackground(inputPath, key, newContent._id)
-);
+        processVideoInBackground(inputPath, key, newContent._id)
+      );
     }
 
     // ============================================
@@ -294,6 +294,14 @@ await newContent.save();
         arrKeywords = [];
       }
 
+      let arrShareLinks = [];
+      try {
+        const parsed = JSON.parse(req.body.shareLinks || "[]");
+        arrShareLinks = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        arrShareLinks = [];
+      }
+
       mediaGroup = await Promise.all(
         imageFiles.map(async (file, i) => ({
           imageUrl: await uploadToS3(file, displayToValue),
@@ -304,6 +312,7 @@ await newContent.save();
           keywords: Array.isArray(arrKeywords[i])
             ? arrKeywords[i].join(",")
             : arrKeywords[i] || "",
+          shareLink: arrShareLinks[i] || "",
           order: i + 1,
           style: parsedBannerStyle
         }))
@@ -331,7 +340,14 @@ await newContent.save();
       } catch {
         arrKeywords = [];
       }
-
+      //linkshare safe parse
+      let arrShareLinks = [];
+      try {
+        const parsed = JSON.parse(req.body.shareLinks || "[]");
+        arrShareLinks = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        arrShareLinks = [];
+      }
 
       mediaGroup = await Promise.all(
         imageFiles.map(async (file, i) => ({
@@ -343,6 +359,7 @@ await newContent.save();
           keywords: Array.isArray(arrKeywords[i])
             ? arrKeywords[i].join(",")
             : arrKeywords[i] || "",
+          shareLink: arrShareLinks[i] || "",
           order: i + 1,
           style: parsedBannerStyle
         }))
@@ -645,6 +662,7 @@ router.get("/public", async (req, res) => {
           image: item.media?.url,
           title: item.media?.title || item.title || "",
           description: item.media?.description || item.description || "",
+          shareLink: item.media?.shareLink || "",
           style: item.bannerStyle || {},
         };
 
@@ -653,6 +671,7 @@ router.get("/public", async (req, res) => {
           image: item.media?.url,
           title: item.media?.title || item.title || "",
           description: item.media?.description || item.description || "",
+          shareLink: item.media?.shareLink || "",
           style: item.bannerStyle || {},
         };
 
@@ -1019,13 +1038,6 @@ router.put("/update/:id", accessAuth, upload.any(), async (req, res) => {
         displayTo: existing.displayTo,
       };
     }
-
-    /* ===============================
-       GRID / CAROUSEL UPDATE
-    =============================== */
-    /* ===============================
-     GRID / CAROUSEL UPDATE (FIXED)
-  =============================== */
     /* ===============================
      GRID / CAROUSEL UPDATE (FINAL CLEAN)
   =============================== */
@@ -1039,7 +1051,7 @@ router.put("/update/:id", accessAuth, upload.any(), async (req, res) => {
       const metaTags = JSON.parse(req.body.metaTags || "[]");
       const metaDescriptions = JSON.parse(req.body.metaDescriptions || "[]");
       const keywords = JSON.parse(req.body.imageKeywords || "[]");
-
+      const shareLinks = JSON.parse(req.body.shareLinks || "[]");
       const existingFiles = Array.isArray(req.body.existingFiles)
         ? req.body.existingFiles
         : req.body.existingFiles
@@ -1081,6 +1093,7 @@ router.put("/update/:id", accessAuth, upload.any(), async (req, res) => {
           metaTag: metaTags[i] || "",
           metaDescription: metaDescriptions[i] || "",
           keywords: keywords[i] || "",
+          shareLink: shareLinks[i] || "",
           order: Number(orders[i]) || i + 1,
           style: existing.bannerStyle || {},
         });
